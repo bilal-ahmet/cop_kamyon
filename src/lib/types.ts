@@ -60,6 +60,7 @@ export interface Waypoint {
   id: number;
   vehicle_id: number;
   driver_id: number | null;
+  stop_location_id: number | null;
   location_name: string | null;
   lat: number;
   lon: number;
@@ -67,4 +68,82 @@ export interface Waypoint {
   load_delivered_kg: number | null;
   arrived_at: string;
   departed_at: string | null;
+  notes: string | null;
+}
+
+/** IoT/GPS sensör cihazı (GET /sensors/:id, GET /vehicles/:id/sensors). */
+export interface Sensor {
+  id: number;
+  vehicle_id: number;
+  serial_number: string;
+  firmware_version: string | null;
+  is_active: boolean;
+  installed_at: string;
+  notes: string | null;
+}
+
+/** Sürücü (GET /drivers). */
+export interface Driver {
+  id: number;
+  full_name: string;
+  license_no: string | null;
+  phone: string | null;
+  birth_date: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+/**
+ * Sürücü-araç ataması (GET /assignments).
+ * Liste/detay sorgularında backend JOIN ile driver_name ve vehicle_plate de döndürür.
+ */
+export interface VehicleAssignment {
+  id: number;
+  vehicle_id: number;
+  driver_id: number;
+  assigned_date: string;
+  released_date: string | null;
+  notes: string | null;
+  created_at: string;
+  driver_name?: string;
+  vehicle_plate?: string;
+}
+
+/** Ham telemetri kaydı (GET /vehicles/:id/telemetry). NUMERIC alanlar normalize edilir. */
+export interface TelemetryRecord {
+  id: number;
+  sensor_id: number;
+  vehicle_id: number;
+  lat: number;
+  lon: number;
+  cog_deg: number | null;
+  fix_valid: boolean;
+  speed_kmh: number | null;
+  speed_knots: number | null;
+  load_kg: number | null;
+  recorded_at: string;
+  received_at: string;
+}
+
+/** Araç için önceden tanımlı çöp toplama noktası (geofencing referansı). */
+export interface StopLocation {
+  id: number;
+  vehicle_id: number;
+  name: string;
+  lat: number;
+  lon: number;
+  radius_m: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Oturum sahibinin tam profili (GET /users/me, GET /users satırı). */
+export interface UserProfile {
+  id: number;
+  username: string;
+  email: string;
+  full_name: string | null;
+  is_active: boolean;
+  created_at: string;
+  last_login: string | null;
 }

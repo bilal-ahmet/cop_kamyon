@@ -23,13 +23,13 @@ export default function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
         {vehicle.vehicle_type && (
           <div>
-            <dt className="text-zinc-400">Tip</dt>
+            <dt className="text-zinc-500">Tip</dt>
             <dd className="text-zinc-700">{vehicle.vehicle_type}</dd>
           </div>
         )}
         {vehicle.capacity_kg != null && (
           <div>
-            <dt className="text-zinc-400">Kapasite</dt>
+            <dt className="text-zinc-500">Kapasite</dt>
             <dd className="text-zinc-700">{vehicle.capacity_kg} kg</dd>
           </div>
         )}

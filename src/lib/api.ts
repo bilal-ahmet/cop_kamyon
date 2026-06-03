@@ -3,8 +3,19 @@ import 'server-only';
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { getSession, deleteSession } from './session';
-import { normalizeLocation } from './normalize';
-import type { Vehicle, VehicleLocation, DailySummary, Waypoint } from './types';
+import { normalizeLocation, normalizeTelemetry } from './normalize';
+import type {
+  Vehicle,
+  VehicleLocation,
+  DailySummary,
+  Waypoint,
+  Sensor,
+  Driver,
+  VehicleAssignment,
+  TelemetryRecord,
+  UserProfile,
+  StopLocation,
+} from './types';
 
 const BACKEND_URL = process.env.BACKEND_URL;
 
@@ -81,6 +92,56 @@ async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/** Mutasyon (POST/PUT/DELETE) sonucu. Hata fırlatmaz; Server Action mesaj gösterebilsin diye { ok } döner. */
+export type MutateResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/**
+ * Kimlik doğrulamalı yazma isteği (POST/PUT/DELETE).
+ * - Token yoksa / 401 / 403 → oturumu temizler ve login'e yönlendirir (apiFetch ile aynı davranış).
+ * - 400/404/409 gibi iş kuralı hatalarında { ok: false, error } döner (forma gösterilir).
+ */
+export async function apiMutate<T>(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+): Promise<MutateResult<T>> {
+  const session = await getSession();
+  if (!session) {
+    redirect('/login');
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
+  } catch {
+    return { ok: false, error: 'Sunucuya ulaşılamadı. Backend çalışıyor mu?' };
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    await deleteSession();
+    redirect('/login');
+  }
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: (data as { error?: string })?.error ?? `İşlem başarısız (${res.status})`,
+    };
+  }
+
+  return { ok: true, data: data as T };
+}
+
 /**
  * Giriş yapan kullanıcının araçları.
  * React.cache ile sarmalı: aynı istek (request) içinde tekrar çağrılınca backend'e
@@ -123,4 +184,75 @@ export async function getVehicleSummary(
 /** Aracın durakları (waypoints). — Aşama 3'te sayfaya bağlanacak. */
 export async function getVehicleWaypoints(id: number): Promise<Waypoint[]> {
   return (await apiFetch<Waypoint[]>(`/vehicles/${id}/waypoints`)) ?? [];
+}
+
+/**
+ * Aracın ham telemetri geçmişi (GET /vehicles/:id/telemetry).
+ * Opsiyonel filtreler: from/to (ISO tarih), limit (1-1000), fixValid.
+ * NUMERIC alanlar number'a çevrilerek döner.
+ */
+export async function getVehicleTelemetry(
+  id: number,
+  params: { from?: string; to?: string; limit?: number; fixValid?: boolean } = {},
+): Promise<TelemetryRecord[]> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.fixValid != null) qs.set('fix_valid', String(params.fixValid));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+
+  const rows = (await apiFetch<Record<string, unknown>[]>(`/vehicles/${id}/telemetry${suffix}`)) ?? [];
+  return rows.map(normalizeTelemetry);
+}
+
+/** Araca takılı sensörler (GET /vehicles/:id/sensors). Aktif + pasif tümü gelir. */
+export async function getVehicleSensors(id: number): Promise<Sensor[]> {
+  return (await apiFetch<Sensor[]>(`/vehicles/${id}/sensors`)) ?? [];
+}
+
+/** Tek bir sensör (GET /sensors/:id). Erişim yoksa backend 403 döner → login'e gider. */
+export async function getSensor(id: number): Promise<Sensor | null> {
+  return apiFetch<Sensor>(`/sensors/${id}`, { allow404: true });
+}
+
+/** Sürücüler (GET /drivers). includeInactive=true ise pasifler de gelir. */
+export async function getDrivers(includeInactive = false): Promise<Driver[]> {
+  const suffix = includeInactive ? '?include_inactive=true' : '';
+  return (await apiFetch<Driver[]>(`/drivers${suffix}`)) ?? [];
+}
+
+/** Tek bir sürücü (GET /drivers/:id). */
+export async function getDriver(id: number): Promise<Driver | null> {
+  return apiFetch<Driver>(`/drivers/${id}`, { allow404: true });
+}
+
+/**
+ * Sürücü-araç atamaları (GET /assignments).
+ * Filtreler: vehicleId, driverId, activeOnly (released_date IS NULL).
+ */
+export async function getAssignments(
+  params: { vehicleId?: number; driverId?: number; activeOnly?: boolean } = {},
+): Promise<VehicleAssignment[]> {
+  const qs = new URLSearchParams();
+  if (params.vehicleId != null) qs.set('vehicle_id', String(params.vehicleId));
+  if (params.driverId != null) qs.set('driver_id', String(params.driverId));
+  if (params.activeOnly) qs.set('active_only', 'true');
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return (await apiFetch<VehicleAssignment[]>(`/assignments${suffix}`)) ?? [];
+}
+
+/** Araca tanımlı durak lokasyonları (GET /vehicles/:id/stop-locations). */
+export async function getVehicleStopLocations(id: number): Promise<StopLocation[]> {
+  return (await apiFetch<StopLocation[]>(`/vehicles/${id}/stop-locations`)) ?? [];
+}
+
+/** Oturum sahibinin profili (GET /users/me). */
+export async function getCurrentUser(): Promise<UserProfile | null> {
+  return apiFetch<UserProfile>('/users/me');
+}
+
+/** Tüm kullanıcılar (GET /users). */
+export async function getUsers(): Promise<UserProfile[]> {
+  return (await apiFetch<UserProfile[]>('/users')) ?? [];
 }

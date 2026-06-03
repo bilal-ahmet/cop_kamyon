@@ -11,6 +11,9 @@ export default function TabNav({ vehicleId }: { vehicleId: number }) {
     { href: base, label: 'Konum' },
     { href: `${base}/duraklar`, label: 'Duraklar' },
     { href: `${base}/raporlar`, label: 'Raporlar' },
+    { href: `${base}/telemetri`, label: 'Telemetri' },
+    { href: `${base}/sensorler`, label: 'Sensörler' },
+    { href: `${base}/lokasyonlar`, label: 'Lokasyonlar' },
   ];
 
   return (

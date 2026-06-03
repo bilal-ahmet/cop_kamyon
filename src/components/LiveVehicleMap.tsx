@@ -10,13 +10,13 @@ import { formatDateTime } from '@/lib/format';
 const MapView = dynamic(() => import('./MapView'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-400">
+    <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-500">
       Harita yükleniyor…
     </div>
   ),
 });
 
-const POLL_MS = 10_000;
+const POLL_MS = 3_000;
 
 export default function LiveVehicleMap({
   vehicleId,
@@ -70,7 +70,7 @@ export default function LiveVehicleMap({
         {location ? (
           <MapView lat={location.lat} lon={location.lon} label={plate} />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-400">
+          <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-500">
             Henüz konum verisi yok. Araçtan ilk sinyal bekleniyor…
           </div>
         )}
@@ -91,17 +91,13 @@ export default function LiveVehicleMap({
             <Field label="Enlem" value={location.lat.toFixed(6)} />
             <Field label="Boylam" value={location.lon.toFixed(6)} />
             <Field
-              label="Hız"
-              value={location.speed_kmh != null ? `${location.speed_kmh} km/s` : '—'}
-            />
-            <Field
               label="Yük"
               value={location.load_kg != null ? `${location.load_kg} kg` : '—'}
             />
             <Field label="Son kayıt" value={formatDateTime(location.recorded_at)} />
           </>
         ) : (
-          <span className="text-zinc-400">Veri bekleniyor</span>
+          <span className="text-zinc-500">Veri bekleniyor</span>
         )}
       </div>
     </div>
@@ -111,7 +107,7 @@ export default function LiveVehicleMap({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <span className="flex flex-col">
-      <span className="text-xs text-zinc-400">{label}</span>
+      <span className="text-xs text-zinc-500">{label}</span>
       <span className="font-medium text-zinc-800">{value}</span>
     </span>
   );

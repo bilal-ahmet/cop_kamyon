@@ -41,8 +41,6 @@ export default async function VehicleReportsTab({
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-zinc-500">
                 <Th>Tarih</Th>
-                <Th>Ort. hız</Th>
-                <Th>Maks. hız</Th>
                 <Th>Mesafe</Th>
                 <Th>Durak</Th>
                 <Th>Toplam yük</Th>
@@ -56,7 +54,7 @@ export default async function VehicleReportsTab({
                   {summary ? (
                     <SummaryRow summary={summary} />
                   ) : (
-                    <td colSpan={6} className="px-3 py-2 text-zinc-400">
+                    <td colSpan={4} className="px-3 py-2 text-zinc-500">
                       Kayıt yok
                     </td>
                   )}
@@ -73,8 +71,6 @@ export default async function VehicleReportsTab({
 function SummaryRow({ summary }: { summary: DailySummary }) {
   return (
     <>
-      <Td>{unit(summary.avg_speed_kmh, 'km/s')}</Td>
-      <Td>{unit(summary.max_speed_kmh, 'km/s')}</Td>
       <Td>{unit(summary.total_distance_km, 'km')}</Td>
       <Td>{summary.waypoint_count ?? '—'}</Td>
       <Td>{unit(summary.total_load_kg, 'kg')}</Td>
