@@ -1,9 +1,10 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getVehicleById, getVehicleStopLocations } from '@/lib/api';
 import StopLocationFormModal from '@/components/stopLocations/StopLocationFormModal';
 import ConfirmButton from '@/components/ConfirmButton';
 import { deactivateStopLocation } from '@/actions/stopLocations';
-import { dangerBtn } from '@/components/formStyles';
+import { dangerBtn, secondaryBtn } from '@/components/formStyles';
 
 // "Lokasyonlar" sekmesi: otomatik geofencing için önceden tanımlı durak noktaları.
 // Kamyon bu noktaların yarıçapına girdiğinde waypoint kaydı otomatik oluşur.
@@ -64,6 +65,14 @@ export default async function VehicleStopLocationsTab({
                   </dl>
                 </div>
                 <div className="flex items-center gap-2">
+                  {sl.is_active && (
+                    <Link
+                      href={`/dashboard/${vehicleId}?focus_lat=${sl.lat}&focus_lon=${sl.lon}`}
+                      className={secondaryBtn}
+                    >
+                      Haritada görüntüle
+                    </Link>
+                  )}
                   <StopLocationFormModal vehicleId={vehicleId} stopLocation={sl} />
                   {sl.is_active && (
                     <ConfirmButton

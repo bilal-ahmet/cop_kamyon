@@ -1,10 +1,14 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { getUsers } from '@/lib/api';
+import { getSession } from '@/lib/session';
 import { formatDateTime } from '@/lib/format';
 import UserCreateModal from '@/components/users/UserCreateModal';
 
-// Kullanıcı yönetimi: sistemdeki yönetici/izleyici kullanıcılarını listele ve yeni ekle.
 export default async function UsersPage() {
+  const session = await getSession();
+  if (session?.user.role !== 'admin') redirect('/dashboard');
+
   const users = await getUsers();
 
   return (
@@ -12,7 +16,7 @@ export default async function UsersPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-800">
-            ← Araçlara dön
+            ← Dashboard'a dön
           </Link>
           <h1 className="mt-1 text-xl font-semibold text-zinc-900">Kullanıcılar</h1>
         </div>

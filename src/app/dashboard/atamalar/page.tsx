@@ -7,8 +7,8 @@ import ConfirmButton from '@/components/ConfirmButton';
 import { endAssignment } from '@/actions/assignments';
 import { dangerBtn } from '@/components/formStyles';
 
-// Atama yönetimi: sürücü-araç atamalarını listele, oluştur, sonlandır.
 export default async function AssignmentsPage() {
+
   const [assignments, vehicles, drivers] = await Promise.all([
     getAssignments(),
     getVehicles(),

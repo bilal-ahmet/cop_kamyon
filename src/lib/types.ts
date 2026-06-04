@@ -6,6 +6,7 @@ export interface User {
   id: number;
   username: string;
   full_name: string;
+  role: string;
 }
 
 /** httpOnly cookie içinde sakladığımız oturum. */
@@ -26,6 +27,8 @@ export interface Vehicle {
   capacity_kg: number | null;
   is_active: boolean;
   created_at: string;
+  owner_username?: string;
+  owner_full_name?: string | null;
 }
 
 /** Aracın son konumu (GET /vehicles/:id/location). — Aşama 2 */
@@ -143,6 +146,7 @@ export interface UserProfile {
   username: string;
   email: string;
   full_name: string | null;
+  role: string;
   is_active: boolean;
   created_at: string;
   last_login: string | null;

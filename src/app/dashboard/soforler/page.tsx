@@ -6,7 +6,6 @@ import ConfirmButton from '@/components/ConfirmButton';
 import { deactivateDriver } from '@/actions/drivers';
 import { dangerBtn } from '@/components/formStyles';
 
-// Şoför yönetimi sayfası: sürücü listesi + ekle/düzenle/devre dışı bırak.
 export default async function DriversPage() {
   const drivers = await getDrivers();
 

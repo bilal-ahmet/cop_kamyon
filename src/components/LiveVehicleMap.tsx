@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import type { VehicleLocation } from '@/lib/types';
+import type { VehicleLocation, StopLocation } from '@/lib/types';
 import { formatDateTime } from '@/lib/format';
 
 // Leaflet 'window' kullandığı için harita yalnızca istemcide yüklenir (ssr: false).
-// ssr: false bir Client Component içinde olmalı (Next 16 kuralı).
 const MapView = dynamic(() => import('./MapView'), {
   ssr: false,
   loading: () => (
@@ -22,13 +21,18 @@ export default function LiveVehicleMap({
   vehicleId,
   plate,
   initialLocation,
+  stopLocations = [],
+  initialFocusPoint = null,
 }: {
   vehicleId: number;
   plate: string;
   initialLocation: VehicleLocation | null;
+  stopLocations?: StopLocation[];
+  initialFocusPoint?: [number, number] | null;
 }) {
   const [location, setLocation] = useState<VehicleLocation | null>(initialLocation);
   const [stale, setStale] = useState(false);
+  const [focusedStop, setFocusedStop] = useState<[number, number] | null>(initialFocusPoint);
 
   useEffect(() => {
     let active = true;
@@ -39,7 +43,6 @@ export default function LiveVehicleMap({
           cache: 'no-store',
         });
         if (res.status === 401) {
-          // Oturum düştü → giriş ekranına.
           window.location.href = '/login';
           return;
         }
@@ -64,11 +67,19 @@ export default function LiveVehicleMap({
     };
   }, [vehicleId]);
 
+  const activeStops = stopLocations.filter((sl) => sl.is_active);
+
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
       <div className="h-96 w-full">
         {location ? (
-          <MapView lat={location.lat} lon={location.lon} label={plate} />
+          <MapView
+            lat={location.lat}
+            lon={location.lon}
+            label={plate}
+            stopLocations={stopLocations}
+            focusPoint={focusedStop}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-500">
             Henüz konum verisi yok. Araçtan ilk sinyal bekleniyor…
@@ -76,6 +87,7 @@ export default function LiveVehicleMap({
         )}
       </div>
 
+      {/* Araç konum bilgileri */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-zinc-200 px-4 py-3 text-sm">
         <span className="flex items-center gap-1.5">
           <span
@@ -99,7 +111,44 @@ export default function LiveVehicleMap({
         ) : (
           <span className="text-zinc-500">Veri bekleniyor</span>
         )}
+
+        {activeStops.length > 0 && (
+          <button
+            onClick={() => setFocusedStop(null)}
+            disabled={focusedStop === null}
+            className={`ml-auto rounded-md border px-3 py-1 text-xs transition-colors ${
+              focusedStop
+                ? 'border-zinc-300 text-zinc-600 hover:bg-zinc-50'
+                : 'border-zinc-200 text-zinc-400 cursor-default'
+            }`}
+          >
+            Araca dön
+          </button>
+        )}
       </div>
+
+      {/* Durak listesi — haritada göster */}
+      {activeStops.length > 0 && (
+        <div className="border-t border-zinc-200 px-4 py-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+            Duraklar
+          </p>
+          <ul className="flex flex-col gap-1">
+            {activeStops.map((sl) => (
+              <li key={sl.id}>
+                <button
+                  onClick={() => setFocusedStop([Number(sl.lat), Number(sl.lon)])}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-50"
+                >
+                  <span className="inline-block h-3 w-3 shrink-0 rounded-full bg-orange-400" />
+                  <span className="font-medium text-zinc-800">{sl.name}</span>
+                  <span className="ml-auto text-xs text-zinc-400">{sl.radius_m} m</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

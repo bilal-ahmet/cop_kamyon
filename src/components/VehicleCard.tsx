@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import type { Vehicle } from '@/lib/types';
 
-/**
- * Tek bir aracı kart olarak gösterir.
- * Aşama 2'de /dashboard/[id] araç detay sayfasına bağlanacak.
- */
-export default function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
+export default function VehicleCard({
+  vehicle,
+  showOwner = false,
+}: {
+  vehicle: Vehicle;
+  showOwner?: boolean;
+}) {
   const subtitle = [vehicle.brand, vehicle.model].filter(Boolean).join(' ');
 
   return (
@@ -31,6 +33,14 @@ export default function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <div>
             <dt className="text-zinc-500">Kapasite</dt>
             <dd className="text-zinc-700">{vehicle.capacity_kg} kg</dd>
+          </div>
+        )}
+        {showOwner && vehicle.owner_username && (
+          <div className="col-span-2">
+            <dt className="text-zinc-500">Müşteri</dt>
+            <dd className="text-zinc-700">
+              {vehicle.owner_full_name ?? vehicle.owner_username}
+            </dd>
           </div>
         )}
       </dl>

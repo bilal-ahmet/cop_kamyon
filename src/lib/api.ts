@@ -32,7 +32,7 @@ export async function loginRequest(
   username: string,
   password: string,
 ): Promise<
-  | { ok: true; token: string; user: { id: number; username: string; full_name: string } }
+  | { ok: true; token: string; user: { id: number; username: string; full_name: string; role: string } }
   | { ok: false; error: string }
 > {
   let res: Response;
@@ -75,10 +75,14 @@ async function apiFetch<T>(
     cache: 'no-store',
   });
 
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
     // Token süresi dolmuş/geçersiz: oturumu temizle ve giriş ekranına gönder.
     await deleteSession();
     redirect('/login');
+  }
+
+  if (res.status === 403) {
+    throw new Error('Bu kaynağa erişim yetkiniz yok (403).');
   }
 
   if (res.status === 404 && opts.allow404) {
@@ -125,7 +129,7 @@ export async function apiMutate<T>(
     return { ok: false, error: 'Sunucuya ulaşılamadı. Backend çalışıyor mu?' };
   }
 
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
     await deleteSession();
     redirect('/login');
   }
@@ -252,7 +256,13 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
   return apiFetch<UserProfile>('/users/me');
 }
 
-/** Tüm kullanıcılar (GET /users). */
-export async function getUsers(): Promise<UserProfile[]> {
-  return (await apiFetch<UserProfile[]>('/users')) ?? [];
+/** Tüm kullanıcılar (GET /users). Admin-only. Opsiyonel search ile username/full_name filtrelenir. */
+export async function getUsers(search?: string): Promise<UserProfile[]> {
+  const qs = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+  return (await apiFetch<UserProfile[]>(`/users${qs}`)) ?? [];
+}
+
+/** Belirli bir kullanıcının araçları (GET /vehicles?user_id=). Admin-only. */
+export async function getVehiclesForUser(userId: number): Promise<Vehicle[]> {
+  return (await apiFetch<Vehicle[]>(`/vehicles?user_id=${userId}`)) ?? [];
 }
