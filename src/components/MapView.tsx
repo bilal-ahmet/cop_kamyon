@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -78,23 +78,6 @@ const stopIcon = L.divIcon({
   popupAnchor: [0, -10],
 });
 
-function radiusForZoom(zoom: number): number {
-  if (zoom >= 15) return 500;
-  if (zoom >= 13) return 1500;
-  if (zoom >= 11) return 4000;
-  return 8000;
-}
-
-/** Zoom değişince parent'ı bilgilendirir. */
-function ZoomWatcher({ onZoomChange }: { onZoomChange: (z: number) => void }) {
-  useMapEvents({
-    zoomend(e) {
-      onZoomChange(e.target.getZoom());
-    },
-  });
-  return null;
-}
-
 /** Araç polling'inde haritayı yeni konuma kaydırır. Durak odaklanıldığında duraklar. */
 function Recenter({ lat, lon, paused }: { lat: number; lon: number; paused: boolean }) {
   const map = useMap();
@@ -129,18 +112,16 @@ export default function MapView({
   vehicleId?: number;
 }) {
   const [pois, setPois] = useState<PoiItem[]>([]);
-  const [zoom, setZoom] = useState(15);
 
   useEffect(() => {
     if (vehicleId == null) return;
     let cancelled = false;
-    const radius = radiusForZoom(zoom);
-    fetch(`/api/vehicles/${vehicleId}/nearby?lat=${lat}&lon=${lon}&radius=${radius}`)
+    fetch(`/api/vehicles/${vehicleId}/nearby?lat=${lat}&lon=${lon}&radius=500`)
       .then((r) => r.ok ? r.json() : [])
       .then((data: PoiItem[]) => { if (!cancelled) setPois(data); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [vehicleId, lat, lon, zoom]);
+  }, [vehicleId, lat, lon]);
 
   return (
     <MapContainer
@@ -150,8 +131,8 @@ export default function MapView({
       className="h-full w-full"
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> katkıda bulunanlar &copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> katkıda bulunanlar'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
       {/* Araç markeri */}
@@ -193,8 +174,7 @@ export default function MapView({
         </Marker>
       ))}
 
-      <ZoomWatcher onZoomChange={setZoom} />
-      <Recenter lat={lat} lon={lon} paused={focusPoint != null} />
+<Recenter lat={lat} lon={lon} paused={focusPoint != null} />
       <FlyToPoint point={focusPoint} />
     </MapContainer>
   );

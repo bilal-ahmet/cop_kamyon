@@ -21,6 +21,22 @@ export interface PoiItem {
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
+const CATEGORY_LABEL: Record<PoiItem['category'], string> = {
+  school: 'Okul',
+  hospital: 'Hastane',
+  police: 'Polis',
+  fuel: 'Akaryakıt',
+  industrial: 'Sanayi',
+  mosque: 'Cami',
+  park: 'Park',
+  pharmacy: 'Eczane',
+  supermarket: 'Market',
+  bank: 'Banka',
+  university: 'Üniversite',
+  fire_station: 'İtfaiye',
+  other: 'Yer',
+};
+
 const AMENITY_MAP: Record<string, PoiItem['category']> = {
   school: 'school',
   hospital: 'hospital',
@@ -94,8 +110,8 @@ out center;
   return elements
     .map((el) => {
       const tags = el.tags ?? {};
-      const name = tags['name'] ?? tags['operator'] ?? null;
-      if (!name) return null;
+      const category = detectCategory(tags);
+      const name = tags['name'] ?? tags['operator'] ?? tags['brand'] ?? CATEGORY_LABEL[category];
 
       const lat = el.lat ?? el.center?.lat;
       const lon = el.lon ?? el.center?.lon;
@@ -109,7 +125,7 @@ out center;
         lat,
         lon,
         name,
-        category: detectCategory(tags),
+        category,
       } satisfies PoiItem;
     })
     .filter((x): x is PoiItem => x !== null);
