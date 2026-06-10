@@ -29,34 +29,31 @@ const POI_EMOJI: Record<PoiItem['category'], string> = {
   bank: '🏦',
   university: '🎓',
   fire_station: '🚒',
+  restaurant: '🍽️',
+  cafe: '☕',
+  fast_food: '🍔',
+  atm: '💳',
+  hotel: '🏨',
+  bakery: '🥖',
+  post_office: '📮',
+  bus_stop: '🚌',
   other: '📍',
 };
 
-function makePOIIcon(category: PoiItem['category']) {
+function makePoiMarkerIcon(category: PoiItem['category'], name: string) {
+  const emoji = POI_EMOJI[category];
+  const label = name.length > 16 ? name.slice(0, 15) + '…' : name;
   return L.divIcon({
-    html: `<div style="font-size:18px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">${POI_EMOJI[category]}</div>`,
+    html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="font-size:16px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))">${emoji}</div>
+      <div style="background:white;color:#1f2937;font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.3);white-space:nowrap">${label}</div>
+    </div>`,
     className: '',
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    popupAnchor: [0, -14],
+    iconSize: [80, 38],
+    iconAnchor: [40, 19],
+    popupAnchor: [0, -20],
   });
 }
-
-const POI_ICONS: Record<PoiItem['category'], L.DivIcon> = {
-  school: makePOIIcon('school'),
-  hospital: makePOIIcon('hospital'),
-  police: makePOIIcon('police'),
-  fuel: makePOIIcon('fuel'),
-  industrial: makePOIIcon('industrial'),
-  mosque: makePOIIcon('mosque'),
-  park: makePOIIcon('park'),
-  pharmacy: makePOIIcon('pharmacy'),
-  supermarket: makePOIIcon('supermarket'),
-  bank: makePOIIcon('bank'),
-  university: makePOIIcon('university'),
-  fire_station: makePOIIcon('fire_station'),
-  other: makePOIIcon('other'),
-};
 
 // Araç için mavi ikon (Leaflet varsayılanı)
 const vehicleIcon = L.icon({
@@ -116,7 +113,7 @@ export default function MapView({
   useEffect(() => {
     if (vehicleId == null) return;
     let cancelled = false;
-    fetch(`/api/vehicles/${vehicleId}/nearby?lat=${lat}&lon=${lon}&radius=500`)
+    fetch(`/api/vehicles/${vehicleId}/nearby?lat=${lat}&lon=${lon}&radius=1000`)
       .then((r) => r.ok ? r.json() : [])
       .then((data: PoiItem[]) => { if (!cancelled) setPois(data); })
       .catch(() => {});
@@ -167,7 +164,7 @@ export default function MapView({
 
       {/* Yakın çevre POI marker'ları */}
       {pois.map((poi) => (
-        <Marker key={poi.id} position={[poi.lat, poi.lon]} icon={POI_ICONS[poi.category]}>
+        <Marker key={poi.id} position={[poi.lat, poi.lon]} icon={makePoiMarkerIcon(poi.category, poi.name)}>
           <Popup>
             <strong>{poi.name}</strong>
           </Popup>
