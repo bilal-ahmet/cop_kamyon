@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { VehicleLocation, StopLocation } from '@/lib/types';
 import { formatDateTime } from '@/lib/format';
+
+const TRAIL_MAX = 600;
 
 // Leaflet 'window' kullandığı için harita yalnızca istemcide yüklenir (ssr: false).
 const MapView = dynamic(() => import('./MapView'), {
@@ -33,6 +35,29 @@ export default function LiveVehicleMap({
   const [location, setLocation] = useState<VehicleLocation | null>(initialLocation);
   const [stale, setStale] = useState(false);
   const [focusedStop, setFocusedStop] = useState<[number, number] | null>(initialFocusPoint);
+  const [trail, setTrail] = useState<[number, number][]>([]);
+  const [showTrail, setShowTrail] = useState(true);
+  const lastTrailPoint = useRef<string | null>(null);
+
+  // Bugünün telemetri geçmişini ilk yüklemede çek
+  useEffect(() => {
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const params = new URLSearchParams({
+      from: from.toISOString(),
+      to: new Date().toISOString(),
+      fix_valid: 'true',
+      limit: '500',
+    });
+    fetch(`/api/vehicles/${vehicleId}/telemetry?${params}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { lat: number; lon: number }[]) => {
+        const pts = rows.map<[number, number]>((r) => [Number(r.lat), Number(r.lon)]);
+        setTrail(pts);
+        if (pts.length > 0) lastTrailPoint.current = pts[pts.length - 1].join(',');
+      })
+      .catch(() => {});
+  }, [vehicleId]);
 
   useEffect(() => {
     let active = true;
@@ -53,7 +78,17 @@ export default function LiveVehicleMap({
         const data: VehicleLocation | null = await res.json();
         if (active) {
           setStale(false);
-          if (data) setLocation(data);
+          if (data) {
+            setLocation(data);
+            const key = `${data.lat},${data.lon}`;
+            if (key !== lastTrailPoint.current) {
+              lastTrailPoint.current = key;
+              setTrail((prev) => {
+                const next: [number, number][] = [...prev, [Number(data.lat), Number(data.lon)]];
+                return next.length > TRAIL_MAX ? next.slice(next.length - TRAIL_MAX) : next;
+              });
+            }
+          }
         }
       } catch {
         if (active) setStale(true);
@@ -80,6 +115,7 @@ export default function LiveVehicleMap({
             stopLocations={stopLocations}
             focusPoint={focusedStop}
             vehicleId={vehicleId}
+            trailPositions={showTrail ? trail : undefined}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-zinc-100 text-sm text-zinc-500">
@@ -113,19 +149,32 @@ export default function LiveVehicleMap({
           <span className="text-zinc-500">Veri bekleniyor</span>
         )}
 
-        {activeStops.length > 0 && (
+        <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => setFocusedStop(null)}
-            disabled={focusedStop === null}
-            className={`ml-auto rounded-md border px-3 py-1 text-xs transition-colors ${
-              focusedStop
-                ? 'border-zinc-300 text-zinc-600 hover:bg-zinc-50'
-                : 'border-zinc-200 text-zinc-400 cursor-default'
+            onClick={() => setShowTrail((v) => !v)}
+            className={`rounded-md border px-3 py-1 text-xs transition-colors ${
+              showTrail
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-zinc-300 text-zinc-600 hover:bg-zinc-50'
             }`}
           >
-            Araca dön
+            {showTrail ? 'İzi Gizle' : 'İzi Göster'}
           </button>
-        )}
+
+          {activeStops.length > 0 && (
+            <button
+              onClick={() => setFocusedStop(null)}
+              disabled={focusedStop === null}
+              className={`rounded-md border px-3 py-1 text-xs transition-colors ${
+                focusedStop
+                  ? 'border-zinc-300 text-zinc-600 hover:bg-zinc-50'
+                  : 'border-zinc-200 text-zinc-400 cursor-default'
+              }`}
+            >
+              Araca dön
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Durak listesi — haritada göster */}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -100,6 +100,7 @@ export default function MapView({
   stopLocations,
   focusPoint,
   vehicleId,
+  trailPositions,
 }: {
   lat: number;
   lon: number;
@@ -107,6 +108,7 @@ export default function MapView({
   stopLocations?: StopLocation[];
   focusPoint?: [number, number] | null;
   vehicleId?: number;
+  trailPositions?: [number, number][];
 }) {
   const [pois, setPois] = useState<PoiItem[]>([]);
 
@@ -131,6 +133,14 @@ export default function MapView({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> katkıda bulunanlar'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+
+      {/* Araç rota izi */}
+      {trailPositions && trailPositions.length > 1 && (
+        <Polyline
+          positions={trailPositions}
+          pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.7 }}
+        />
+      )}
 
       {/* Araç markeri */}
       <Marker position={[lat, lon]} icon={vehicleIcon}>
