@@ -71,7 +71,7 @@ export default function LiveVehicleMap({
 
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-      <div className="h-96 w-full">
+      <div className="h-[600px] w-full">
         {location ? (
           <MapView
             lat={location.lat}
