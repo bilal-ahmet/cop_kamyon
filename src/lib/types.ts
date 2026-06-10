@@ -56,6 +56,13 @@ export interface DailySummary {
   total_load_kg: number | null;
   avg_load_kg: number | null;
   telemetry_count: number | null;
+  avg_temperature_c: number | null;
+  min_temperature_c: number | null;
+  max_temperature_c: number | null;
+  avg_humidity_pct: number | null;
+  avg_pressure_hpa: number | null;
+  motion_count: number | null;
+  avg_battery_mv: number | null;
 }
 
 /** Durak/waypoint (GET /vehicles/:id/waypoints). — Aşama 2 */
