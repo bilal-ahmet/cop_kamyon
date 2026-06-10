@@ -3,30 +3,51 @@ export interface PoiItem {
   lat: number;
   lon: number;
   name: string;
-  category: 'school' | 'hospital' | 'police' | 'fuel' | 'industrial' | 'other';
+  category:
+    | 'school'
+    | 'hospital'
+    | 'police'
+    | 'fuel'
+    | 'industrial'
+    | 'mosque'
+    | 'park'
+    | 'pharmacy'
+    | 'supermarket'
+    | 'bank'
+    | 'university'
+    | 'fire_station'
+    | 'other';
 }
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
-const CATEGORY_MAP: Record<string, PoiItem['category']> = {
+const AMENITY_MAP: Record<string, PoiItem['category']> = {
   school: 'school',
   hospital: 'hospital',
+  clinic: 'hospital',
   police: 'police',
   fuel: 'fuel',
-  industrial: 'industrial',
-  works: 'industrial',
+  pharmacy: 'pharmacy',
+  bank: 'bank',
+  university: 'university',
+  college: 'university',
+  fire_station: 'fire_station',
 };
 
 function detectCategory(tags: Record<string, string>): PoiItem['category'] {
   const amenity = tags['amenity'];
   const landuse = tags['landuse'];
   const manMade = tags['man_made'];
-  return (
-    CATEGORY_MAP[amenity] ??
-    CATEGORY_MAP[landuse] ??
-    CATEGORY_MAP[manMade] ??
-    'other'
-  );
+  const leisure = tags['leisure'];
+  const shop = tags['shop'];
+  const religion = tags['religion'];
+
+  if (amenity === 'place_of_worship' && religion === 'muslim') return 'mosque';
+  if (leisure === 'park') return 'park';
+  if (shop === 'supermarket') return 'supermarket';
+  if (amenity && AMENITY_MAP[amenity]) return AMENITY_MAP[amenity];
+  if (landuse === 'industrial' || manMade === 'works') return 'industrial';
+  return 'other';
 }
 
 export async function fetchNearbyPois(
@@ -35,12 +56,16 @@ export async function fetchNearbyPois(
   radiusM = 500,
 ): Promise<PoiItem[]> {
   const query = `
-[out:json][timeout:10];
+[out:json][timeout:15];
 (
-  node["amenity"~"school|hospital|police|fuel"](around:${radiusM},${lat},${lon});
+  node["amenity"~"school|hospital|clinic|police|fuel|pharmacy|bank|university|college|fire_station|place_of_worship"](around:${radiusM},${lat},${lon});
+  node["amenity"="place_of_worship"]["religion"="muslim"](around:${radiusM},${lat},${lon});
+  node["leisure"="park"](around:${radiusM},${lat},${lon});
+  node["shop"="supermarket"](around:${radiusM},${lat},${lon});
   node["landuse"="industrial"](around:${radiusM},${lat},${lon});
   node["man_made"="works"](around:${radiusM},${lat},${lon});
-  way["amenity"~"school|hospital"](around:${radiusM},${lat},${lon});
+  way["amenity"~"school|hospital|university|college|fire_station|place_of_worship"](around:${radiusM},${lat},${lon});
+  way["leisure"="park"](around:${radiusM},${lat},${lon});
   way["landuse"="industrial"](around:${radiusM},${lat},${lon});
 );
 out center;
@@ -65,6 +90,7 @@ out center;
     tags?: Record<string, string>;
   }> = json.elements ?? [];
 
+  const seen = new Set<number>();
   return elements
     .map((el) => {
       const tags = el.tags ?? {};
@@ -74,6 +100,9 @@ out center;
       const lat = el.lat ?? el.center?.lat;
       const lon = el.lon ?? el.center?.lon;
       if (lat == null || lon == null) return null;
+
+      if (seen.has(el.id)) return null;
+      seen.add(el.id);
 
       return {
         id: el.id,
