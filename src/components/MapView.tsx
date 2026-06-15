@@ -75,6 +75,18 @@ const stopIcon = L.divIcon({
   popupAnchor: [0, -10],
 });
 
+// Geçmiş rota için başlangıç (yeşil) / bitiş (kırmızı) ikonları
+const makeEndpointIcon = (color: string) =>
+  L.divIcon({
+    html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 1px 5px rgba(0,0,0,.5)"></div>`,
+    className: '',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -10],
+  });
+const startIcon = makeEndpointIcon('#16a34a');
+const endIcon = makeEndpointIcon('#dc2626');
+
 /** Araç polling'inde haritayı yeni konuma kaydırır. Durak odaklanıldığında duraklar. */
 function Recenter({ lat, lon, paused }: { lat: number; lon: number; paused: boolean }) {
   const map = useMap();
@@ -93,6 +105,20 @@ function FlyToPoint({ point }: { point: [number, number] | null | undefined }) {
   return null;
 }
 
+/** Geçmiş rota gösterilince haritayı tüm rotayı kapsayacak şekilde ayarlar. */
+function FitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (positions.length === 0) return;
+    if (positions.length === 1) {
+      map.setView(positions[0], 16);
+    } else {
+      map.fitBounds(positions, { padding: [40, 40] });
+    }
+  }, [positions, map]);
+  return null;
+}
+
 export default function MapView({
   lat,
   lon,
@@ -101,6 +127,7 @@ export default function MapView({
   focusPoint,
   vehicleId,
   trailPositions,
+  mode = 'live',
 }: {
   lat: number;
   lon: number;
@@ -109,18 +136,26 @@ export default function MapView({
   focusPoint?: [number, number] | null;
   vehicleId?: number;
   trailPositions?: [number, number][];
+  mode?: 'live' | 'history';
 }) {
   const [pois, setPois] = useState<PoiItem[]>([]);
+  const isHistory = mode === 'history';
 
   useEffect(() => {
-    if (vehicleId == null) return;
+    // POI'ler yalnızca canlı modda — geçmiş rotada haritayı kalabalıklaştırmasın.
+    if (isHistory || vehicleId == null) return;
     let cancelled = false;
     fetch(`/api/vehicles/${vehicleId}/nearby?lat=${lat}&lon=${lon}&radius=1000`)
       .then((r) => r.ok ? r.json() : [])
       .then((data: PoiItem[]) => { if (!cancelled) setPois(data); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [vehicleId, lat, lon]);
+  }, [vehicleId, lat, lon, isHistory]);
+
+  // Geçmiş modda rota kronolojik sırada gelir: ilk nokta başlangıç, son nokta bitiş.
+  const route = trailPositions ?? [];
+  const startPt = isHistory && route.length > 0 ? route[0] : null;
+  const endPt = isHistory && route.length > 0 ? route[route.length - 1] : null;
 
   return (
     <MapContainer
@@ -135,17 +170,31 @@ export default function MapView({
       />
 
       {/* Araç rota izi */}
-      {trailPositions && trailPositions.length > 1 && (
+      {route.length > 1 && (
         <Polyline
-          positions={trailPositions}
+          positions={route}
           pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.7 }}
         />
       )}
 
-      {/* Araç markeri */}
-      <Marker position={[lat, lon]} icon={vehicleIcon}>
-        {label && <Popup>{label}</Popup>}
-      </Marker>
+      {/* Canlı mod: araç markeri */}
+      {!isHistory && (
+        <Marker position={[lat, lon]} icon={vehicleIcon}>
+          {label && <Popup>{label}</Popup>}
+        </Marker>
+      )}
+
+      {/* Geçmiş mod: başlangıç ve bitiş işaretçileri */}
+      {startPt && (
+        <Marker position={startPt} icon={startIcon}>
+          <Popup>Başlangıç</Popup>
+        </Marker>
+      )}
+      {endPt && (
+        <Marker position={endPt} icon={endIcon}>
+          <Popup>Bitiş</Popup>
+        </Marker>
+      )}
 
       {/* Durak ikonları ve geofence yarıçap çemberleri */}
       {stopLocations?.filter((sl) => sl.is_active).map((sl) => (
@@ -181,8 +230,15 @@ export default function MapView({
         </Marker>
       ))}
 
-<Recenter lat={lat} lon={lon} paused={focusPoint != null} />
-      <FlyToPoint point={focusPoint} />
+      {/* Canlı modda araç takibi; geçmiş modda rotaya sığdır */}
+      {isHistory ? (
+        <FitBounds positions={route} />
+      ) : (
+        <>
+          <Recenter lat={lat} lon={lon} paused={focusPoint != null} />
+          <FlyToPoint point={focusPoint} />
+        </>
+      )}
     </MapContainer>
   );
 }
