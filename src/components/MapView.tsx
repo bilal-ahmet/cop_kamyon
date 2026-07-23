@@ -10,11 +10,61 @@ import Map, {
   useMap,
 } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { StopLocation } from '@/lib/types';
 import type { PoiItem } from '@/lib/overpass';
 
 // Ücretsiz, anahtarsız vektör basemap — Bright: Liberty'den daha detaylı/renkli, daha çok etiket.
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/bright';
+
+/**
+ * Vektör tile'da zaten var olan etiketleri stil seviyesinde açar (Google Maps'e yaklaşma).
+ * Harita 'load' olduktan sonra tüm metin (symbol+text-field) katmanları üzerinde çalışır:
+ *   1) minzoom düşür  → sokak/POI isimleri daha erken zoom'da görünür (14 → 12 gibi)
+ *   2) text-size büyüt + beyaz halo → okunabilirlik ciddi artar
+ *   3) text-padding azalt → çakışma eleme gevşer, aynı anda daha çok isim
+ *   4) çizgi etiketlerinde symbol-spacing kısalt → sokak isimleri daha sık tekrar eder
+ */
+function enrichLabels(map: MapLibreMap) {
+  const layers = map.getStyle().layers ?? [];
+  for (const layer of layers) {
+    if (layer.type !== 'symbol') continue;
+    const id = layer.id;
+    try {
+      if (map.getLayoutProperty(id, 'text-field') == null) continue;
+
+      // 1) Etiketler daha erken görünsün (yalnızca geç açılan katmanlar)
+      const mz = layer.minzoom;
+      if (typeof mz === 'number' && mz >= 12) {
+        map.setLayerZoomRange(id, mz - 2, layer.maxzoom ?? 24);
+      }
+
+      // 2) Yazıyı biraz büyüt (sayı ya da zoom-ifadesi olabilir)
+      const size = map.getLayoutProperty(id, 'text-size');
+      if (typeof size === 'number') {
+        map.setLayoutProperty(id, 'text-size', size * 1.12);
+      } else if (Array.isArray(size)) {
+        map.setLayoutProperty(id, 'text-size', ['*', size, 1.12]);
+      }
+
+      // 2b) Okunabilirlik için güçlü beyaz halo
+      map.setPaintProperty(id, 'text-halo-color', '#ffffff');
+      map.setPaintProperty(id, 'text-halo-width', 1.5);
+      map.setPaintProperty(id, 'text-halo-blur', 0.4);
+
+      // 3) Çakışma payını azalt → daha çok etiket sığar
+      map.setLayoutProperty(id, 'text-padding', 1);
+
+      // 4) Sokak (çizgi) etiketleri daha sık tekrarlansın
+      const placement = map.getLayoutProperty(id, 'symbol-placement');
+      if (placement === 'line' || placement === 'line-center') {
+        map.setLayoutProperty(id, 'symbol-spacing', 180);
+      }
+    } catch {
+      // tek bir katman hata verirse döngüyü bozma
+    }
+  }
+}
 
 // Leaflet [lat, lon] kullanır; MapLibre [lng, lat] bekler. Tek yerden çeviririz.
 const toLngLat = (p: [number, number]): [number, number] => [p[1], p[0]];
@@ -174,6 +224,7 @@ export default function MapView({
       style={{ width: '100%', height: '100%' }}
       dragRotate={false}
       attributionControl={{ compact: true }}
+      onLoad={(e) => enrichLabels(e.target as unknown as MapLibreMap)}
     >
       <NavigationControl position="top-right" showCompass={false} />
 
