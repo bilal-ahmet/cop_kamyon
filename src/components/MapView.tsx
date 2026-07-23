@@ -104,7 +104,7 @@ function addExtraLayers(map: MapLibreMap) {
           'source-layer': 'building',
           minzoom: 15,
           paint: {
-            'fill-extrusion-color': '#dcd9d4',
+            'fill-extrusion-color': '#ddd5c4', // beautifyBasemap bina paletiyle uyumlu
             'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 6],
             'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
             'fill-extrusion-opacity': 0.75,
@@ -143,6 +143,63 @@ function addExtraLayers(map: MapLibreMap) {
   }
 }
 
+/**
+ * "Google paleti" dokunuşu: soluk varsayılan renkleri doygunlaştırır, POI ikonlarını
+ * çok daha erken zoom'da ve daha büyük gösterir. Katmanlar id/source-layer
+ * heuristiğiyle bulunur — hem MapTiler streets-v2 ("Industrial", "Water", "Building"...)
+ * hem OpenFreeMap Bright ("landuse-industrial", "water", "building"...) kimlikleriyle eşleşir.
+ */
+function beautifyBasemap(map: MapLibreMap) {
+  const layers = map.getStyle().layers ?? [];
+  for (const layer of layers) {
+    const id = layer.id;
+    const lid = id.toLowerCase();
+    const sl = 'source-layer' in layer ? (layer['source-layer'] as string) : '';
+    try {
+      if (layer.type === 'fill') {
+        if (sl === 'building') {
+          // Binalar belirgin: sıcak gri + koyu kontur
+          map.setPaintProperty(id, 'fill-color', '#e3dccd');
+          map.setPaintProperty(id, 'fill-outline-color', '#cec4b1');
+        } else if (lid.includes('water') && !lid.includes('intermittent')) {
+          map.setPaintProperty(id, 'fill-color', '#9bd0f5');
+        } else if (lid.includes('wood') || lid.includes('forest')) {
+          map.setPaintProperty(id, 'fill-color', '#a3d693');
+        } else if (lid.includes('park') || lid.includes('grass') || lid.includes('meadow')) {
+          map.setPaintProperty(id, 'fill-color', '#b8e39f');
+        } else if (lid.includes('industrial') || lid.includes('railway')) {
+          // Sanayi alanları ayrışsın: açık lavanta-gri
+          map.setPaintProperty(id, 'fill-color', '#e4e0ee');
+        } else if (lid.includes('commercial') || lid.includes('retail')) {
+          map.setPaintProperty(id, 'fill-color', '#f6e7d8');
+        } else if (lid.includes('residential') || lid.includes('suburb')) {
+          map.setPaintProperty(id, 'fill-color', '#efece5');
+        } else if (lid.includes('hospital')) {
+          map.setPaintProperty(id, 'fill-color', '#f8e0e0');
+        } else if (lid.includes('school') || lid.includes('education') || lid.includes('university')) {
+          map.setPaintProperty(id, 'fill-color', '#f1ead3');
+        } else if (lid.includes('cemetery')) {
+          map.setPaintProperty(id, 'fill-color', '#cfe0c8');
+        }
+      } else if (layer.type === 'symbol' && sl === 'poi') {
+        // POI ikonları Google gibi erken (z13+) ve biraz büyük görünsün
+        const mz = layer.minzoom;
+        if (typeof mz === 'number' && mz > 13) {
+          map.setLayerZoomRange(id, 13, layer.maxzoom ?? 24);
+        }
+        const icon = map.getLayoutProperty(id, 'icon-size');
+        if (typeof icon === 'number') {
+          map.setLayoutProperty(id, 'icon-size', Math.min(icon * 1.25, 2));
+        } else if (icon == null) {
+          map.setLayoutProperty(id, 'icon-size', 1.15);
+        }
+      }
+    } catch {
+      // tek katman hatası tümünü bozmasın
+    }
+  }
+}
+
 /** MapTiler arazi verisiyle 3B modda araziyi kabartır; anahtar yoksa sessizce atlanır. */
 function syncTerrain(map: MapLibreMap, on: boolean) {
   if (!MAPTILER_KEY) return;
@@ -176,6 +233,7 @@ function applyEnhancements(map: MapLibreMap, styleKey: string, is3d: boolean) {
   if (m.__copEnhancedStyle !== styleKey) {
     m.__copEnhancedStyle = styleKey;
     enrichLabels(map);
+    beautifyBasemap(map);
     addExtraLayers(map);
     syncTerrain(map, is3d);
   }
