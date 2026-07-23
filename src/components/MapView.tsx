@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Map, {
   Marker,
   Popup,
@@ -8,6 +8,7 @@ import Map, {
   Layer,
   NavigationControl,
   useMap,
+  type MapRef,
 } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -20,6 +21,10 @@ const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 const MAP_STYLE = MAPTILER_KEY
   ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`
   : 'https://tiles.openfreemap.org/styles/bright';
+// Uydu görünümü (etiketli hibrit) — yalnızca MapTiler anahtarıyla kullanılabilir.
+const HYBRID_STYLE = MAPTILER_KEY
+  ? `https://api.maptiler.com/maps/hybrid/style.json?key=${MAPTILER_KEY}`
+  : null;
 
 /**
  * Vektör tile'da zaten var olan etiketleri stil seviyesinde açar (Google Maps'e yaklaşma).
@@ -138,6 +143,44 @@ function addExtraLayers(map: MapLibreMap) {
   }
 }
 
+/** MapTiler arazi verisiyle 3B modda araziyi kabartır; anahtar yoksa sessizce atlanır. */
+function syncTerrain(map: MapLibreMap, on: boolean) {
+  if (!MAPTILER_KEY) return;
+  try {
+    if (on) {
+      if (!map.getSource('cop-terrain')) {
+        map.addSource('cop-terrain', {
+          type: 'raster-dem',
+          url: `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${MAPTILER_KEY}`,
+        });
+      }
+      map.setTerrain({ source: 'cop-terrain', exaggeration: 1.2 });
+    } else {
+      map.setTerrain(null);
+    }
+  } catch {
+    // arazi açılamazsa harita düz çalışmaya devam eder
+  }
+}
+
+type EnhancedMap = MapLibreMap & { __copEnhancedStyle?: string };
+
+/**
+ * Zenginleştirmeleri idempotent uygular. Harita↔Uydu geçişinde setStyle tüm eklenen
+ * katmanları/kaynakları sildiği için 'styledata' olayında yeniden çağrılır; aynı stil
+ * için ikinci kez çalışmasın diye stil anahtarıyla işaretlenir (text-size ×1.12
+ * birikmesin). Terrain durumu her çağrıda mevcut 3B durumuna eşitlenir.
+ */
+function applyEnhancements(map: MapLibreMap, styleKey: string, is3d: boolean) {
+  const m = map as EnhancedMap;
+  if (m.__copEnhancedStyle !== styleKey) {
+    m.__copEnhancedStyle = styleKey;
+    enrichLabels(map);
+    addExtraLayers(map);
+    syncTerrain(map, is3d);
+  }
+}
+
 // Leaflet [lat, lon] kullanır; MapLibre [lng, lat] bekler. Tek yerden çeviririz.
 const toLngLat = (p: [number, number]): [number, number] => [p[1], p[0]];
 
@@ -184,30 +227,35 @@ function metersCircle(
 
 type PopupInfo = { lng: number; lat: number; title: string; subtitle?: string };
 
-/** 2D/3D geçiş düğmesi — eğim verince binalar yükselir (kuzey-yukarı sabit kalır). */
-function Pitch3DToggle() {
-  const { current: map } = useMap();
-  const [is3d, setIs3d] = useState(false);
+/** Harita üstü küçük kare düğme (sağ üstte NavigationControl'ün altına dizilir). */
+function MapButton({
+  top,
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  top: number;
+  active: boolean;
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
-      title={is3d ? '2B görünüme dön' : '3B bina görünümü'}
-      onClick={() => {
-        if (!map) return;
-        const next = !is3d;
-        setIs3d(next);
-        map.easeTo({ pitch: next ? 55 : 0, duration: 600 });
-      }}
+      title={title}
+      onClick={onClick}
       style={{
-        position: 'absolute', top: 84, right: 10, zIndex: 1,
+        position: 'absolute', top, right: 10, zIndex: 1,
         width: 29, height: 29, borderRadius: 4,
         background: 'white', border: '2px solid rgba(0,0,0,.1)',
         boxShadow: '0 1px 4px rgba(0,0,0,.15)',
-        fontSize: 11, fontWeight: 700, color: is3d ? '#2563eb' : '#374151',
+        fontSize: 12, fontWeight: 700, color: active ? '#2563eb' : '#374151',
         cursor: 'pointer', lineHeight: 1,
       }}
     >
-      {is3d ? '2B' : '3B'}
+      {children}
     </button>
   );
 }
@@ -279,6 +327,53 @@ export default function MapView({
   const [popup, setPopup] = useState<PopupInfo | null>(null);
   const isHistory = mode === 'history';
 
+  const mapRef = useRef<MapRef>(null);
+  const [is3d, setIs3d] = useState(false);
+  const [satellite, setSatellite] = useState(false);
+  const activeStyle = satellite && HYBRID_STYLE ? HYBRID_STYLE : MAP_STYLE;
+
+  function toggle3d() {
+    const m = mapRef.current?.getMap() as unknown as MapLibreMap | undefined;
+    if (!m) return;
+    const next = !is3d;
+    setIs3d(next);
+    m.easeTo({ pitch: next ? 55 : 0, duration: 600 });
+    syncTerrain(m, next);
+  }
+
+  // Canlı araç animasyonu: yeni konum gelince marker ışınlanmak yerine yumuşakça
+  // kayar; gidiş yönü hesaplanıp ikon o yöne döndürülür.
+  const [animPos, setAnimPos] = useState<[number, number]>([lon, lat]); // [lng, lat]
+  const [heading, setHeading] = useState<number | null>(null);
+  const animFrom = useRef<[number, number]>([lon, lat]);
+  const rafId = useRef(0);
+  useEffect(() => {
+    const [fromLng, fromLat] = animFrom.current;
+    const dLng = lon - fromLng;
+    const dLat = lat - fromLat;
+    if (dLng === 0 && dLat === 0) return;
+    // Gidiş yönü (kısa mesafede düzlem yaklaşımı yeterli; 0° = kuzey)
+    setHeading((Math.atan2(dLng * Math.cos((lat * Math.PI) / 180), dLat) * 180) / Math.PI);
+    // Büyük sıçramada (ilk konum / veri kopması, ~500 m+) animasyonsuz geç
+    if (Math.hypot(dLng, dLat) > 0.005) {
+      animFrom.current = [lon, lat];
+      setAnimPos([lon, lat]);
+      return;
+    }
+    const start = performance.now();
+    const DUR = 2200; // POLL_MS'ten biraz kısa: sonraki konum gelmeden tamamlanır
+    cancelAnimationFrame(rafId.current);
+    const step = (now: number) => {
+      const t = Math.min((now - start) / DUR, 1);
+      const cur: [number, number] = [fromLng + dLng * t, fromLat + dLat * t];
+      animFrom.current = cur;
+      setAnimPos(cur);
+      if (t < 1) rafId.current = requestAnimationFrame(step);
+    };
+    rafId.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId.current);
+  }, [lat, lon]);
+
   useEffect(() => {
     // POI'ler yalnızca canlı modda — geçmiş rotada haritayı kalabalıklaştırmasın.
     if (isHistory || vehicleId == null) return;
@@ -319,19 +414,34 @@ export default function MapView({
 
   return (
     <Map
+      ref={mapRef}
       initialViewState={{ longitude: lon, latitude: lat, zoom: 15 }}
-      mapStyle={MAP_STYLE}
+      mapStyle={activeStyle}
       style={{ width: '100%', height: '100%' }}
       dragRotate={false}
       attributionControl={{ compact: true }}
-      onLoad={(e) => {
-        const m = e.target as unknown as MapLibreMap;
-        enrichLabels(m);
-        addExtraLayers(m);
-      }}
+      onLoad={(e) => applyEnhancements(e.target as unknown as MapLibreMap, activeStyle, is3d)}
+      onStyleData={(e) => applyEnhancements(e.target as unknown as MapLibreMap, activeStyle, is3d)}
     >
       <NavigationControl position="top-right" showCompass={false} />
-      <Pitch3DToggle />
+      <MapButton
+        top={84}
+        active={is3d}
+        title={is3d ? '2B görünüme dön' : '3B görünüm (binalar + arazi)'}
+        onClick={toggle3d}
+      >
+        {is3d ? '2B' : '3B'}
+      </MapButton>
+      {HYBRID_STYLE && (
+        <MapButton
+          top={121}
+          active={satellite}
+          title={satellite ? 'Harita görünümüne dön' : 'Uydu görünümü'}
+          onClick={() => setSatellite((v) => !v)}
+        >
+          {satellite ? '🗺️' : '🛰️'}
+        </MapButton>
+      )}
 
       {/* Durak geofence yarıçap çemberleri */}
       {activeStops.length > 0 && (
@@ -361,26 +471,58 @@ export default function MapView({
         </Source>
       )}
 
-      {/* Canlı mod: araç markeri */}
+      {/* Canlı mod: araç markeri — konumlar arası yumuşak kayar, yön oku gidiş yönünü gösterir */}
       {!isHistory && (
         <Marker
-          longitude={lon}
-          latitude={lat}
+          longitude={animPos[0]}
+          latitude={animPos[1]}
           anchor="center"
           onClick={(e) => {
             e.originalEvent.stopPropagation();
-            if (label) setPopup({ lng: lon, lat, title: label });
+            if (label) setPopup({ lng: animPos[0], lat: animPos[1], title: label });
           }}
         >
           <div
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 30, height: 30, borderRadius: '50%',
-              background: '#2563eb', border: '3px solid white',
-              boxShadow: '0 1px 5px rgba(0,0,0,.5)', fontSize: 15, cursor: 'pointer',
+              position: 'relative', width: 38, height: 38,
+              transform: `rotate(${heading ?? 0}deg)`,
+              transition: 'transform .6s ease',
+              cursor: 'pointer',
             }}
           >
-            🚛
+            {/* Yön oku (ilk konum gelene dek gizli) */}
+            {heading != null && (
+              <div
+                style={{
+                  position: 'absolute', top: -6, left: '50%', marginLeft: -7,
+                  width: 0, height: 0,
+                  borderLeft: '7px solid transparent',
+                  borderRight: '7px solid transparent',
+                  borderBottom: '10px solid #2563eb',
+                  filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.3))',
+                }}
+              />
+            )}
+            <div
+              style={{
+                position: 'absolute', inset: 4,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%',
+                background: '#2563eb', border: '3px solid white',
+                boxShadow: '0 1px 5px rgba(0,0,0,.5)', fontSize: 15,
+              }}
+            >
+              {/* Kapsayıcı yöne dönerken emoji dik kalsın */}
+              <span
+                style={{
+                  display: 'inline-block',
+                  transform: `rotate(${-(heading ?? 0)}deg)`,
+                  transition: 'transform .6s ease',
+                }}
+              >
+                🚛
+              </span>
+            </div>
           </div>
         </Marker>
       )}
