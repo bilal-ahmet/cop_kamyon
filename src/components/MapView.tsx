@@ -14,8 +14,12 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { StopLocation } from '@/lib/types';
 import type { PoiItem } from '@/lib/overpass';
 
-// Ücretsiz, anahtarsız vektör basemap — Bright: Liberty'den daha detaylı/renkli, daha çok etiket.
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/bright';
+// Basemap seçimi: MapTiler anahtarı varsa Google'a en yakın hazır stil (Streets v2),
+// yoksa ücretsiz/anahtarsız OpenFreeMap Bright. Anahtar .env.local'da NEXT_PUBLIC_MAPTILER_KEY.
+const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+const MAP_STYLE = MAPTILER_KEY
+  ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`
+  : 'https://tiles.openfreemap.org/styles/bright';
 
 /**
  * Vektör tile'da zaten var olan etiketleri stil seviyesinde açar (Google Maps'e yaklaşma).
@@ -66,6 +70,74 @@ function enrichLabels(map: MapLibreMap) {
   }
 }
 
+/**
+ * Tile şemasında (OpenMapTiles) hazır olup stilin çizmediği katmanları ekler:
+ *   - Kapı/bina numaraları (housenumber) — Google'daki gibi zoom 17+'da küçük gri numaralar
+ *   - 3D binalar (fill-extrusion + render_height) — 3D düğmesiyle eğim verince yükselir
+ * Hem OpenFreeMap hem MapTiler stilinde çalışır; katman zaten varsa dokunmaz.
+ */
+function addExtraLayers(map: MapLibreMap) {
+  const style = map.getStyle();
+  const layers = style.layers ?? [];
+  // Vektör kaynağın adı stile göre değişir (openmaptiles / maptiler_planet...) — dinamik bul.
+  const vectorSource = Object.entries(style.sources).find(([, s]) => s.type === 'vector')?.[0];
+  if (!vectorSource) return;
+
+  const hasSourceLayer = (sl: string) =>
+    layers.some((l) => 'source-layer' in l && l['source-layer'] === sl);
+  // Etiketler binaların üstünde kalsın diye ilk sembol katmanının altına ekle.
+  const firstSymbolId = layers.find((l) => l.type === 'symbol')?.id;
+
+  try {
+    // 3D binalar (stilde fill-extrusion yoksa)
+    if (!layers.some((l) => l.type === 'fill-extrusion')) {
+      map.addLayer(
+        {
+          id: 'cop-buildings-3d',
+          type: 'fill-extrusion',
+          source: vectorSource,
+          'source-layer': 'building',
+          minzoom: 15,
+          paint: {
+            'fill-extrusion-color': '#dcd9d4',
+            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 6],
+            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+            'fill-extrusion-opacity': 0.75,
+          },
+        },
+        firstSymbolId,
+      );
+    }
+  } catch {
+    // 3D katmanı eklenemezse harita 2D çalışmaya devam eder
+  }
+
+  try {
+    // Kapı/bina numaraları (stil housenumber çizmiyorsa)
+    if (!hasSourceLayer('housenumber')) {
+      map.addLayer({
+        id: 'cop-housenumbers',
+        type: 'symbol',
+        source: vectorSource,
+        'source-layer': 'housenumber',
+        minzoom: 17,
+        layout: {
+          'text-field': ['get', 'housenumber'],
+          'text-size': 10,
+          'text-padding': 2,
+        },
+        paint: {
+          'text-color': '#8a8a8a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1,
+        },
+      });
+    }
+  } catch {
+    // veri yoksa katman boş kalır, sorun değil
+  }
+}
+
 // Leaflet [lat, lon] kullanır; MapLibre [lng, lat] bekler. Tek yerden çeviririz.
 const toLngLat = (p: [number, number]): [number, number] => [p[1], p[0]];
 
@@ -111,6 +183,34 @@ function metersCircle(
 }
 
 type PopupInfo = { lng: number; lat: number; title: string; subtitle?: string };
+
+/** 2D/3D geçiş düğmesi — eğim verince binalar yükselir (kuzey-yukarı sabit kalır). */
+function Pitch3DToggle() {
+  const { current: map } = useMap();
+  const [is3d, setIs3d] = useState(false);
+  return (
+    <button
+      type="button"
+      title={is3d ? '2B görünüme dön' : '3B bina görünümü'}
+      onClick={() => {
+        if (!map) return;
+        const next = !is3d;
+        setIs3d(next);
+        map.easeTo({ pitch: next ? 55 : 0, duration: 600 });
+      }}
+      style={{
+        position: 'absolute', top: 84, right: 10, zIndex: 1,
+        width: 29, height: 29, borderRadius: 4,
+        background: 'white', border: '2px solid rgba(0,0,0,.1)',
+        boxShadow: '0 1px 4px rgba(0,0,0,.15)',
+        fontSize: 11, fontWeight: 700, color: is3d ? '#2563eb' : '#374151',
+        cursor: 'pointer', lineHeight: 1,
+      }}
+    >
+      {is3d ? '2B' : '3B'}
+    </button>
+  );
+}
 
 /** Araç polling'inde haritayı yeni konuma kaydırır. Durak odaklanıldığında duraklar. */
 function Recenter({ lat, lon, paused }: { lat: number; lon: number; paused: boolean }) {
@@ -224,9 +324,14 @@ export default function MapView({
       style={{ width: '100%', height: '100%' }}
       dragRotate={false}
       attributionControl={{ compact: true }}
-      onLoad={(e) => enrichLabels(e.target as unknown as MapLibreMap)}
+      onLoad={(e) => {
+        const m = e.target as unknown as MapLibreMap;
+        enrichLabels(m);
+        addExtraLayers(m);
+      }}
     >
       <NavigationControl position="top-right" showCompass={false} />
+      <Pitch3DToggle />
 
       {/* Durak geofence yarıçap çemberleri */}
       {activeStops.length > 0 && (
