@@ -13,8 +13,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { StopLocation } from '@/lib/types';
 import type { PoiItem } from '@/lib/overpass';
 
-// Ücretsiz, anahtarsız vektör basemap — sanayi alanları/yer isimleri her zoom'da keskin.
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+// Ücretsiz, anahtarsız vektör basemap — Bright: Liberty'den daha detaylı/renkli, daha çok etiket.
+const MAP_STYLE = 'https://tiles.openfreemap.org/styles/bright';
 
 // Leaflet [lat, lon] kullanır; MapLibre [lng, lat] bekler. Tek yerden çeviririz.
 const toLngLat = (p: [number, number]): [number, number] => [p[1], p[0]];
