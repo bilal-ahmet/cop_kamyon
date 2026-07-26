@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { VehicleLocation, StopLocation, TrackPoint, RouteLeg } from '@/lib/types';
-import { formatDateTime, formatKm, lastNDates } from '@/lib/format';
+import { formatDateTime, formatKm, istanbulIso, lastNDates } from '@/lib/format';
 import { findStopByKind, legLengthsKm, pathLengthKm, splitLegs } from '@/lib/geo';
 import TimeField from './TimeField';
 
@@ -32,11 +32,6 @@ const MapView = dynamic(() => import('./MapView'), {
 });
 
 const POLL_MS = 3_000;
-
-// "YYYY-MM-DD" + "HH:MM" → ISO (Istanbul +03:00 sabit).
-function toIso(date: string, time: string, endSeconds = false): string {
-  return new Date(`${date}T${time}:${endSeconds ? '59' : '00'}+03:00`).toISOString();
-}
 
 export default function LiveVehicleMap({
   vehicleId,
@@ -153,8 +148,8 @@ export default function LiveVehicleMap({
     setHistLoading(true);
     setHistError(null);
     const params = new URLSearchParams({
-      from: toIso(histDate, histFrom || '00:00'),
-      to: toIso(histDate, histTo || '23:59', true),
+      from: istanbulIso(histDate, histFrom || '00:00'),
+      to: istanbulIso(histDate, histTo || '23:59', true),
       fix_valid: 'true',
       limit: '1000',
     });

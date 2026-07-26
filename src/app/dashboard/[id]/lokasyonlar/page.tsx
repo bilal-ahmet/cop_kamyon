@@ -4,7 +4,7 @@ import { getVehicleById, getVehicleStopLocations } from '@/lib/api';
 import StopLocationFormModal from '@/components/stopLocations/StopLocationFormModal';
 import StopKindBadge from '@/components/stopLocations/StopKindBadge';
 import ConfirmButton from '@/components/ConfirmButton';
-import { deactivateStopLocation } from '@/actions/stopLocations';
+import { deactivateStopLocation, deleteStopLocation } from '@/actions/stopLocations';
 import { dangerBtn, secondaryBtn } from '@/components/formStyles';
 
 // "Lokasyonlar" sekmesi: otomatik geofencing için önceden tanımlı durak noktaları.
@@ -81,10 +81,17 @@ export default async function VehicleStopLocationsTab({
                       action={deactivateStopLocation}
                       hidden={{ id: sl.id, vehicle_id: vehicleId }}
                       label="Devre dışı"
-                      confirmText={`"${sl.name}" lokasyonunu devre dışı bırakmak istediğinize emin misiniz?`}
-                      className={dangerBtn}
+                      confirmText={`"${sl.name}" lokasyonu devre dışı bırakılacak; kayıt durur ama geçmişi korunur. Emin misiniz?`}
+                      className={secondaryBtn}
                     />
                   )}
+                  <ConfirmButton
+                    action={deleteStopLocation}
+                    hidden={{ id: sl.id, vehicle_id: vehicleId }}
+                    label="Sil"
+                    confirmText={`"${sl.name}" lokasyonu kalıcı olarak silinecek. Duraklar sekmesindeki ziyaret kayıtları korunur, yalnızca bu lokasyonla bağı kopar. Emin misiniz?`}
+                    className={dangerBtn}
+                  />
                 </div>
               </div>
             </li>

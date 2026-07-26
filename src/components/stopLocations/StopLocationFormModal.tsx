@@ -3,6 +3,7 @@
 import Modal from '../Modal';
 import ActionForm from '../ActionForm';
 import { TextField, SelectField } from '../fields';
+import CoordinateField from './CoordinateField';
 import { createStopLocation, updateStopLocation } from '@/actions/stopLocations';
 import { primaryBtn, secondaryBtn } from '../formStyles';
 import type { StopLocation } from '@/lib/types';
@@ -40,24 +41,8 @@ export default function StopLocationFormModal({
             placeholder="Örn: Atatürk Cad. No:12 önü"
           />
           <div className="grid grid-cols-2 gap-3">
-            <TextField
-              label="Enlem *"
-              name="lat"
-              type="number"
-              step="any"
-              defaultValue={stopLocation?.lat}
-              required
-              placeholder="41.01234"
-            />
-            <TextField
-              label="Boylam *"
-              name="lon"
-              type="number"
-              step="any"
-              defaultValue={stopLocation?.lon}
-              required
-              placeholder="29.01234"
-            />
+            <CoordinateField label="Enlem *" name="lat" axis="lat" defaultValue={stopLocation?.lat} />
+            <CoordinateField label="Boylam *" name="lon" axis="lon" defaultValue={stopLocation?.lon} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <TextField

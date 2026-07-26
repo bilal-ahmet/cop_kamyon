@@ -22,20 +22,21 @@ export default function AssignmentFormModal({
     <Modal triggerLabel="+ Yeni Tanım" triggerClassName={primaryBtn} title="Yeni Şoför-Araç Tanımı">
       {(close) => (
         <ActionForm action={createAssignment} submitLabel="Tanımla" onSuccess={close}>
-          <SelectField label="Araç *" name="vehicle_id" required>
-            <option value="">Seçiniz…</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.plate}
-              </option>
-            ))}
-          </SelectField>
-
+          {/* Gösterim sırası her yerde şoför → araç */}
           <SelectField label="Şoför *" name="driver_id" required>
             <option value="">Seçiniz…</option>
             {drivers.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.full_name}
+              </option>
+            ))}
+          </SelectField>
+
+          <SelectField label="Araç *" name="vehicle_id" required>
+            <option value="">Seçiniz…</option>
+            {vehicles.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.plate}
               </option>
             ))}
           </SelectField>

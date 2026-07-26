@@ -197,12 +197,13 @@ export async function getVehicleWaypoints(id: number): Promise<Waypoint[]> {
  */
 export async function getVehicleTelemetry(
   id: number,
-  params: { from?: string; to?: string; limit?: number; fixValid?: boolean } = {},
+  params: { from?: string; to?: string; limit?: number; offset?: number; fixValid?: boolean } = {},
 ): Promise<TelemetryRecord[]> {
   const qs = new URLSearchParams();
   if (params.from) qs.set('from', params.from);
   if (params.to) qs.set('to', params.to);
   if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
   if (params.fixValid != null) qs.set('fix_valid', String(params.fixValid));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
 

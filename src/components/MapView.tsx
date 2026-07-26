@@ -257,29 +257,34 @@ const ROUTE_ARROW = 'cop-route-arrow';
  */
 function addRouteArrowImage(map: MapLibreMap) {
   if (map.hasImage(ROUTE_ARROW)) return;
-  const S = 24;
+  const S = 40; // 2x pixelRatio ile 20 CSS px — çizgi üzerinde rahat okunur
   const canvas = document.createElement('canvas');
   canvas.width = S;
   canvas.height = S;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Koyu daire zemin: ok, altındaki mavi/turuncu çizgiden net ayrışsın.
   ctx.beginPath();
-  ctx.moveTo(S - 4, S / 2); // sağdaki uç
-  ctx.lineTo(6, 4);
-  ctx.lineTo(10, S / 2); // arka çentik — ok daha keskin görünür
-  ctx.lineTo(6, S - 4);
-  ctx.closePath();
-
-  ctx.fillStyle = '#ffffff';
+  ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(23, 37, 84, .92)'; // koyu lacivert
   ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = 'rgba(0,0,0,.5)';
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgba(255,255,255,.95)';
   ctx.stroke();
 
+  // Beyaz ok — sağa bakar (symbol-placement:'line' +x'i gidiş yönüne hizalar).
+  const cx = S / 2 + 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx + 8.5, S / 2); // uç
+  ctx.lineTo(cx - 6, S / 2 - 8);
+  ctx.lineTo(cx - 2.5, S / 2);
+  ctx.lineTo(cx - 6, S / 2 + 8);
+  ctx.closePath();
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
   const { data, width, height } = ctx.getImageData(0, 0, S, S);
-  // pixelRatio 2 → 24px'lik görsel haritada 12 CSS px olarak çizilir (net kenar).
   map.addImage(ROUTE_ARROW, { width, height, data: new Uint8ClampedArray(data) }, { pixelRatio: 2 });
 }
 
@@ -642,9 +647,10 @@ export default function MapView({
             type="symbol"
             layout={{
               'symbol-placement': 'line',
-              'symbol-spacing': 70,
+              // Zoom arttıkça oklar sıklaşır; uzaklaşınca haritayı boğmaz.
+              'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 10, 110, 15, 80, 18, 55],
               'icon-image': ROUTE_ARROW,
-              'icon-size': 1,
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.75, 15, 0.95, 18, 1.15],
               'icon-rotation-alignment': 'map',
               'icon-allow-overlap': true,
               'icon-ignore-placement': true,

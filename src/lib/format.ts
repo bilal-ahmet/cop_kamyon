@@ -55,6 +55,14 @@ export function formatKm(km: number | null | undefined): string {
   return `${kmFmt.format(km)} km`;
 }
 
+/**
+ * "YYYY-MM-DD" + "HH:MM" → ISO zaman damgası (Istanbul +03:00 sabit).
+ * `endOfMinute` true ise saniye 59 alınır (aralık sonu için).
+ */
+export function istanbulIso(date: string, time: string, endOfMinute = false): string {
+  return new Date(`${date}T${time}:${endOfMinute ? '59' : '00'}+03:00`).toISOString();
+}
+
 /** Bugünden geriye doğru n günün YYYY-MM-DD listesi (Istanbul takvimi). En yeni gün başta. */
 export function lastNDates(n: number): string[] {
   const out: string[] = [];

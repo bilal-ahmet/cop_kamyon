@@ -3,8 +3,8 @@ import { getVehicleById, getVehicleSensors } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import SensorFormModal from '@/components/sensors/SensorFormModal';
 import ConfirmButton from '@/components/ConfirmButton';
-import { deactivateSensor } from '@/actions/sensors';
-import { dangerBtn } from '@/components/formStyles';
+import { deactivateSensor, deleteSensor } from '@/actions/sensors';
+import { dangerBtn, secondaryBtn } from '@/components/formStyles';
 
 // "Sensörler" sekmesi: araca takılı IoT/GPS sensörlerinin yönetimi.
 export default async function VehicleSensorsTab({
@@ -65,10 +65,17 @@ export default async function VehicleSensorsTab({
                       action={deactivateSensor}
                       hidden={{ id: s.id, vehicle_id: vehicleId }}
                       label="Devre dışı"
-                      confirmText={`${s.serial_number} sensörünü devre dışı bırakmak istediğinize emin misiniz?`}
-                      className={dangerBtn}
+                      confirmText={`${s.serial_number} sensörü devre dışı bırakılacak; telemetri geçmişi korunur. Emin misiniz?`}
+                      className={secondaryBtn}
                     />
                   )}
+                  <ConfirmButton
+                    action={deleteSensor}
+                    hidden={{ id: s.id, vehicle_id: vehicleId }}
+                    label="Sil"
+                    confirmText={`${s.serial_number} sensörü kalıcı olarak silinecek. Emin misiniz?`}
+                    className={dangerBtn}
+                  />
                 </div>
               </div>
             </li>

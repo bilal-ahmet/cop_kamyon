@@ -54,13 +54,33 @@ export async function updateSensor(
   return { ok: true };
 }
 
-/** Sensörü devre dışı bırakır (DELETE /sensors/:id). */
+/** Sensörü devre dışı bırakır (POST /sensors/:id/deactivate). Telemetri geçmişi korunur. */
 export async function deactivateSensor(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
   const id = Number(formData.get('id'));
   const vehicle_id = Number(formData.get('vehicle_id'));
+  if (!id) return { error: 'Geçersiz sensör.' };
+
+  const res = await apiMutate(`/sensors/${id}/deactivate`, 'POST');
+  if (!res.ok) return { error: res.error };
+
+  revalidatePath(`/dashboard/${vehicle_id}/sensorler`);
+  return { ok: true };
+}
+
+/**
+ * Sensörü kalıcı olarak siler (DELETE /sensors/:id).
+ * Telemetri kaydı olan sensör silinemez; backend 409 ile açıklayıcı mesaj döner.
+ */
+export async function deleteSensor(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  const vehicle_id = Number(formData.get('vehicle_id'));
+  if (!id) return { error: 'Geçersiz sensör.' };
 
   const res = await apiMutate(`/sensors/${id}`, 'DELETE');
   if (!res.ok) return { error: res.error };

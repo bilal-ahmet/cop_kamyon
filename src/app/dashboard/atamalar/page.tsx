@@ -43,11 +43,11 @@ export default async function AssignmentsPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-zinc-900">
-                      {a.vehicle_plate ?? `Araç #${a.vehicle_id}`}
-                    </span>
-                    <span className="text-zinc-400">←</span>
-                    <span className="text-zinc-700">
                       {a.driver_name ?? `Şoför #${a.driver_id}`}
+                    </span>
+                    <span className="text-zinc-400">→</span>
+                    <span className="font-mono text-zinc-700">
+                      {a.vehicle_plate ?? `Araç #${a.vehicle_id}`}
                     </span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${

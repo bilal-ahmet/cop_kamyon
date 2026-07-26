@@ -15,8 +15,10 @@ export default function AssignmentEditModal({ assignment }: { assignment: Vehicl
         <ActionForm action={updateAssignment} submitLabel="Kaydet" onSuccess={close}>
           <input type="hidden" name="id" value={assignment.id} />
           <p className="text-sm text-zinc-500">
-            {assignment.vehicle_plate ?? `Araç #${assignment.vehicle_id}`} ←{' '}
-            {assignment.driver_name ?? `Şoför #${assignment.driver_id}`}
+            {assignment.driver_name ?? `Şoför #${assignment.driver_id}`} →{' '}
+            <span className="font-mono">
+              {assignment.vehicle_plate ?? `Araç #${assignment.vehicle_id}`}
+            </span>
           </p>
           <TextField
             label="Serbest bırakma tarihi"
