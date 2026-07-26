@@ -1,11 +1,25 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import type { VehicleLocation, StopLocation } from '@/lib/types';
-import { formatDateTime, lastNDates } from '@/lib/format';
+import type { VehicleLocation, StopLocation, TrackPoint, RouteLeg } from '@/lib/types';
+import { formatDateTime, formatKm, lastNDates } from '@/lib/format';
+import { findStopByKind, legLengthsKm, pathLengthKm, splitLegs } from '@/lib/geo';
+import TimeField from './TimeField';
 
 const TRAIL_MAX = 600;
+
+/** Telemetri satırından iz noktası (NUMERIC alanlar string gelebilir). */
+type TelemetryRow = { lat: number; lon: number; recorded_at: string; speed_kmh?: number | null };
+
+function toTrackPoint(r: TelemetryRow): TrackPoint {
+  return {
+    lat: Number(r.lat),
+    lon: Number(r.lon),
+    t: r.recorded_at,
+    speed: r.speed_kmh == null ? null : Number(r.speed_kmh),
+  };
+}
 
 // Leaflet 'window' kullandığı için harita yalnızca istemcide yüklenir (ssr: false).
 const MapView = dynamic(() => import('./MapView'), {
@@ -40,7 +54,7 @@ export default function LiveVehicleMap({
   const [location, setLocation] = useState<VehicleLocation | null>(initialLocation);
   const [stale, setStale] = useState(false);
   const [focusedStop, setFocusedStop] = useState<[number, number] | null>(initialFocusPoint);
-  const [trail, setTrail] = useState<[number, number][]>([]);
+  const [trail, setTrail] = useState<TrackPoint[]>([]);
   const [showTrail, setShowTrail] = useState(true);
   const lastTrailPoint = useRef<string | null>(null);
 
@@ -50,9 +64,11 @@ export default function LiveVehicleMap({
   const [histDate, setHistDate] = useState(today);
   const [histFrom, setHistFrom] = useState('');
   const [histTo, setHistTo] = useState('');
-  const [histTrail, setHistTrail] = useState<[number, number][]>([]);
+  const [histTrail, setHistTrail] = useState<TrackPoint[]>([]);
   const [histLoading, setHistLoading] = useState(false);
   const [histError, setHistError] = useState<string | null>(null);
+  // Güzergah filtresi: tümü / yalnızca gidiş / yalnızca dönüş
+  const [legFilter, setLegFilter] = useState<'all' | RouteLeg>('all');
 
   // Bugünün telemetri geçmişini ilk yüklemede çek (canlı iz başlangıcı)
   useEffect(() => {
@@ -66,11 +82,12 @@ export default function LiveVehicleMap({
     });
     fetch(`/api/vehicles/${vehicleId}/telemetry?${params}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows: { lat: number; lon: number }[]) => {
+      .then((rows: TelemetryRow[]) => {
         // DESC geldiği için kronolojik sıraya çevir
-        const pts = rows.map<[number, number]>((r) => [Number(r.lat), Number(r.lon)]).reverse();
+        const pts = rows.map(toTrackPoint).reverse();
         setTrail(pts);
-        if (pts.length > 0) lastTrailPoint.current = pts[pts.length - 1].join(',');
+        const last = pts[pts.length - 1];
+        if (last) lastTrailPoint.current = `${last.lat},${last.lon}`;
       })
       .catch(() => {});
   }, [vehicleId]);
@@ -102,7 +119,15 @@ export default function LiveVehicleMap({
             if (key !== lastTrailPoint.current) {
               lastTrailPoint.current = key;
               setTrail((prev) => {
-                const next: [number, number][] = [...prev, [Number(data.lat), Number(data.lon)]];
+                const next: TrackPoint[] = [
+                  ...prev,
+                  {
+                    lat: Number(data.lat),
+                    lon: Number(data.lon),
+                    t: data.recorded_at,
+                    speed: data.speed_kmh == null ? null : Number(data.speed_kmh),
+                  },
+                ];
                 return next.length > TRAIL_MAX ? next.slice(next.length - TRAIL_MAX) : next;
               });
             }
@@ -145,8 +170,8 @@ export default function LiveVehicleMap({
         setHistError('Veri alınamadı.');
         return;
       }
-      const rows: { lat: number; lon: number }[] = await res.json();
-      const pts = rows.map<[number, number]>((r) => [Number(r.lat), Number(r.lon)]).reverse();
+      const rows: TelemetryRow[] = await res.json();
+      const pts = rows.map(toTrackPoint).reverse();
       setHistTrail(pts);
       setMode('history');
       if (pts.length === 0) setHistError('Seçilen aralıkta konum verisi yok.');
@@ -160,10 +185,27 @@ export default function LiveVehicleMap({
   const isHistory = mode === 'history';
   const activeStops = stopLocations.filter((sl) => sl.is_active);
 
+  // Başlangıç/bitiş konumları — gidiş/dönüş ayrımı bitiş konumundan türetilir.
+  const startLoc = findStopByKind(stopLocations, 'start');
+  const endLoc = findStopByKind(stopLocations, 'end');
+  const anchors = [startLoc, endLoc].filter((sl): sl is StopLocation => sl !== null);
+
+  // Geçmiş iz → gidiş/dönüş etiketli noktalar, ardından filtre.
+  const legTrail = useMemo(() => splitLegs(histTrail, endLoc), [histTrail, endLoc]);
+  const hasReturn = legTrail.some((p) => p.leg === 'return');
+  const shownTrail = useMemo(
+    () => (legFilter === 'all' ? legTrail : legTrail.filter((p) => p.leg === legFilter)),
+    [legTrail, legFilter],
+  );
+
+  // Gidilen mesafeler
+  const dist = useMemo(() => legLengthsKm(legTrail), [legTrail]);
+  const liveKm = useMemo(() => pathLengthKm(trail), [trail]);
+
   // Harita merkezi: geçmiş modda rotanın ilk noktası, yoksa canlı konum
   const center: [number, number] | null =
-    isHistory && histTrail.length > 0
-      ? histTrail[0]
+    isHistory && shownTrail.length > 0
+      ? [shownTrail[0].lat, shownTrail[0].lon]
       : location
         ? [location.lat, location.lon]
         : null;
@@ -194,9 +236,9 @@ export default function LiveVehicleMap({
 
         {isHistory && (
           <>
-            <LabeledInput label="Tarih" type="date" value={histDate} max={today} onChange={setHistDate} />
-            <LabeledInput label="Başlangıç" type="time" value={histFrom} onChange={setHistFrom} />
-            <LabeledInput label="Bitiş" type="time" value={histTo} onChange={setHistTo} />
+            <LabeledDate label="Tarih" value={histDate} max={today} onChange={setHistDate} />
+            <TimeField label="Başlangıç" value={histFrom} onChange={setHistFrom} />
+            <TimeField label="Bitiş" value={histTo} onChange={setHistTo} />
             <button
               onClick={loadHistory}
               disabled={histLoading}
@@ -204,9 +246,36 @@ export default function LiveVehicleMap({
             >
               {histLoading ? 'Yükleniyor…' : 'Göster'}
             </button>
+
+            {/* Güzergah filtresi — yalnızca dönüş rotası tespit edildiyse anlamlı */}
+            {hasReturn && (
+              <div className="inline-flex rounded-md border border-zinc-300 bg-white p-0.5 text-xs">
+                {(
+                  [
+                    ['all', 'Tümü'],
+                    ['out', 'Gidiş'],
+                    ['return', 'Dönüş'],
+                  ] as const
+                ).map(([value, text]) => (
+                  <button
+                    key={value}
+                    onClick={() => setLegFilter(value)}
+                    className={`rounded px-3 py-1 transition-colors ${
+                      legFilter === value ? 'bg-blue-600 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+                    }`}
+                  >
+                    {text}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {histError && <span className="text-xs text-amber-600">{histError}</span>}
             {!histError && histTrail.length > 0 && (
-              <span className="text-xs text-zinc-500">{histTrail.length} konum noktası</span>
+              <span className="text-xs text-zinc-500">
+                {shownTrail.length} konum noktası · {formatKm(dist.total)}
+                {hasReturn && ` (gidiş ${formatKm(dist.out)} · dönüş ${formatKm(dist.return)})`}
+              </span>
             )}
           </>
         )}
@@ -219,9 +288,10 @@ export default function LiveVehicleMap({
             lon={center[1]}
             label={plate}
             stopLocations={isHistory ? [] : stopLocations}
+            routeAnchors={isHistory ? anchors : []}
             focusPoint={isHistory ? null : focusedStop}
             vehicleId={vehicleId}
-            trailPositions={isHistory ? histTrail : showTrail ? trail : undefined}
+            trackPoints={isHistory ? shownTrail : showTrail ? trail : undefined}
             mode={mode}
           />
         ) : (
@@ -253,6 +323,7 @@ export default function LiveVehicleMap({
                 label="Yük"
                 value={location.load_kg != null ? `${location.load_kg} kg` : '—'}
               />
+              <Field label="Bugün gidilen" value={formatKm(liveKm)} />
               <Field label="Son kayıt" value={formatDateTime(location.recorded_at)} />
             </>
           ) : (
@@ -290,19 +361,33 @@ export default function LiveVehicleMap({
 
       {/* Geçmiş modda rota açıklaması */}
       {isHistory && histTrail.length > 0 && (
-        <div className="flex items-center gap-4 border-t border-zinc-200 px-4 py-3 text-xs text-zinc-600">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-zinc-200 px-4 py-3 text-xs text-zinc-600">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-full border-2 border-white bg-green-600 shadow" />
-            Başlangıç
+            İz başlangıcı
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-full border-2 border-white bg-red-600 shadow" />
-            Bitiş
+            İz bitişi
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-5 bg-blue-600" />
-            İzlenen rota
+            Gidiş güzergahı {formatKm(dist.out)}
           </span>
+          {hasReturn && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-0.5 w-5 bg-amber-500" />
+              Dönüş güzergahı {formatKm(dist.return)}
+            </span>
+          )}
+          <span className="text-zinc-400">
+            ▲ oklar gidiş yönünü gösterir · izin üzerine gelince saat bilgisi çıkar
+          </span>
+          {!endLoc && (
+            <span className="text-amber-600">
+              Dönüş rotasını ayırmak için Lokasyonlar sekmesinden bir “Bitiş konumu” tanımlayın.
+            </span>
+          )}
         </div>
       )}
 
@@ -332,15 +417,13 @@ export default function LiveVehicleMap({
   );
 }
 
-function LabeledInput({
+function LabeledDate({
   label,
-  type,
   value,
   onChange,
   max,
 }: {
   label: string;
-  type: 'date' | 'time';
   value: string;
   onChange: (v: string) => void;
   max?: string;
@@ -349,7 +432,7 @@ function LabeledInput({
     <label className="flex flex-col gap-1">
       <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{label}</span>
       <input
-        type={type}
+        type="date"
         value={value}
         max={max}
         onChange={(e) => onChange(e.target.value)}

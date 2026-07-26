@@ -4,8 +4,8 @@ import { formatDate } from '@/lib/format';
 import AssignmentFormModal from '@/components/assignments/AssignmentFormModal';
 import AssignmentEditModal from '@/components/assignments/AssignmentEditModal';
 import ConfirmButton from '@/components/ConfirmButton';
-import { endAssignment } from '@/actions/assignments';
-import { dangerBtn } from '@/components/formStyles';
+import { endAssignment, deleteAssignment } from '@/actions/assignments';
+import { dangerBtn, secondaryBtn } from '@/components/formStyles';
 
 export default async function AssignmentsPage() {
 
@@ -22,14 +22,14 @@ export default async function AssignmentsPage() {
           <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-800">
             ← Araçlara dön
           </Link>
-          <h1 className="mt-1 text-xl font-semibold text-zinc-900">Atamalar</h1>
+          <h1 className="mt-1 text-xl font-semibold text-zinc-900">Şoför-Araç Tanımlama</h1>
         </div>
         <AssignmentFormModal vehicles={vehicles} drivers={drivers} />
       </div>
 
       {assignments.length === 0 ? (
         <p className="rounded-lg border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">
-          Atama kaydı yok.
+          Şoför-araç tanımı yok.
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
@@ -70,10 +70,17 @@ export default async function AssignmentsPage() {
                       action={endAssignment}
                       hidden={{ id: a.id }}
                       label="Sonlandır"
-                      confirmText="Bu atamayı sonlandırmak istediğinize emin misiniz?"
-                      className={dangerBtn}
+                      confirmText={`${a.driver_name ?? 'Şoför'} — ${a.vehicle_plate ?? 'araç'} tanımını sonlandırmak istediğinize emin misiniz?`}
+                      className={secondaryBtn}
                     />
                   )}
+                  <ConfirmButton
+                    action={deleteAssignment}
+                    hidden={{ id: a.id }}
+                    label="Sil"
+                    confirmText={`${a.driver_name ?? 'Şoför'} — ${a.vehicle_plate ?? 'araç'} tanımı kalıcı olarak silinecek. Emin misiniz?`}
+                    className={dangerBtn}
+                  />
                 </div>
               </li>
             );

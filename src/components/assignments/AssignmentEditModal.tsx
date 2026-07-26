@@ -7,10 +7,10 @@ import { updateAssignment } from '@/actions/assignments';
 import { secondaryBtn } from '../formStyles';
 import type { VehicleAssignment } from '@/lib/types';
 
-/** Atama düzenleme modalı — serbest bırakma tarihi ve not. */
+/** Şoför-araç tanımı düzenleme modalı — serbest bırakma tarihi ve not. */
 export default function AssignmentEditModal({ assignment }: { assignment: VehicleAssignment }) {
   return (
-    <Modal triggerLabel="Düzenle" triggerClassName={secondaryBtn} title="Atamayı Düzenle">
+    <Modal triggerLabel="Düzenle" triggerClassName={secondaryBtn} title="Şoför-Araç Tanımını Düzenle">
       {(close) => (
         <ActionForm action={updateAssignment} submitLabel="Kaydet" onSuccess={close}>
           <input type="hidden" name="id" value={assignment.id} />

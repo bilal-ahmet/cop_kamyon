@@ -2,16 +2,20 @@
 
 import { revalidatePath } from 'next/cache';
 import { apiMutate } from '@/lib/api';
-import type { StopLocation } from '@/lib/types';
-import { type ActionState, strOrNull, numOrNull } from './_shared';
+import type { StopLocation, StopLocationKind } from '@/lib/types';
+import { type ActionState, numOrNull } from './_shared';
+
+const KINDS: StopLocationKind[] = ['stop', 'start', 'end'];
 
 /** Form alanlarından durak lokasyonu gövdesi oluşturur. */
 function stopLocationBody(formData: FormData) {
+  const rawKind = String(formData.get('kind') ?? '');
   return {
     name: String(formData.get('name') ?? '').trim(),
     lat: numOrNull(formData.get('lat')),
     lon: numOrNull(formData.get('lon')),
     radius_m: numOrNull(formData.get('radius_m')) ?? 5,
+    kind: (KINDS as string[]).includes(rawKind) ? (rawKind as StopLocationKind) : 'stop',
   };
 }
 
@@ -33,6 +37,7 @@ export async function createStopLocation(
   if (!res.ok) return { error: res.error };
 
   revalidatePath(`/dashboard/${vehicleId}/lokasyonlar`);
+  revalidatePath(`/dashboard/${vehicleId}`); // harita gidiş/dönüş ayrımı için kind'e bağlı
   return { ok: true };
 }
 
@@ -52,6 +57,7 @@ export async function updateStopLocation(
   if (!res.ok) return { error: res.error };
 
   revalidatePath(`/dashboard/${vehicleId}/lokasyonlar`);
+  revalidatePath(`/dashboard/${vehicleId}`); // harita gidiş/dönüş ayrımı için kind'e bağlı
   return { ok: true };
 }
 
@@ -67,5 +73,6 @@ export async function deactivateStopLocation(
   if (!res.ok) return { error: res.error };
 
   revalidatePath(`/dashboard/${vehicleId}/lokasyonlar`);
+  revalidatePath(`/dashboard/${vehicleId}`); // harita gidiş/dönüş ayrımı için kind'e bağlı
   return { ok: true };
 }

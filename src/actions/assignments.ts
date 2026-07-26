@@ -48,12 +48,28 @@ export async function updateAssignment(
   return { ok: true };
 }
 
-/** Atamayı sonlandırır (DELETE /assignments/:id → released_date = bugün). */
+/** Tanımı sonlandırır (POST /assignments/:id/end → released_date = bugün). */
 export async function endAssignment(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
   const id = Number(formData.get('id'));
+  if (!id) return { error: 'Geçersiz kayıt.' };
+
+  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}/end`, 'POST');
+  if (!res.ok) return { error: res.error };
+
+  revalidatePath('/dashboard/atamalar');
+  return { ok: true };
+}
+
+/** Tanımı kalıcı olarak siler (DELETE /assignments/:id). */
+export async function deleteAssignment(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  if (!id) return { error: 'Geçersiz kayıt.' };
 
   const res = await apiMutate(`/assignments/${id}`, 'DELETE');
   if (!res.ok) return { error: res.error };

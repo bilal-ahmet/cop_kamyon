@@ -59,7 +59,7 @@ export default async function DashboardPage({
             Şoförler
           </Link>
           <Link href="/dashboard/atamalar" className={secondaryBtn}>
-            Atamalar
+            Şoför-Araç Tanımlama
           </Link>
           <VehicleFormModal />
         </div>

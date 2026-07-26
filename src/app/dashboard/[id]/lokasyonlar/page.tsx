@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getVehicleById, getVehicleStopLocations } from '@/lib/api';
 import StopLocationFormModal from '@/components/stopLocations/StopLocationFormModal';
+import StopKindBadge from '@/components/stopLocations/StopKindBadge';
 import ConfirmButton from '@/components/ConfirmButton';
 import { deactivateStopLocation } from '@/actions/stopLocations';
 import { dangerBtn, secondaryBtn } from '@/components/formStyles';
@@ -46,6 +47,7 @@ export default async function VehicleStopLocationsTab({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-zinc-900">{sl.name}</span>
+                    <StopKindBadge kind={sl.kind} />
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         sl.is_active

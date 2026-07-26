@@ -2,7 +2,7 @@
 
 import Modal from '../Modal';
 import ActionForm from '../ActionForm';
-import { TextField } from '../fields';
+import { TextField, SelectField } from '../fields';
 import { createStopLocation, updateStopLocation } from '@/actions/stopLocations';
 import { primaryBtn, secondaryBtn } from '../formStyles';
 import type { StopLocation } from '@/lib/types';
@@ -59,15 +59,25 @@ export default function StopLocationFormModal({
               placeholder="29.01234"
             />
           </div>
-          <TextField
-            label="Yarıçap (metre)"
-            name="radius_m"
-            type="number"
-            defaultValue={stopLocation?.radius_m ?? 5}
-            placeholder="5"
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <TextField
+              label="Yarıçap (metre)"
+              name="radius_m"
+              type="number"
+              defaultValue={stopLocation?.radius_m ?? 5}
+              placeholder="5"
+            />
+            <SelectField label="Lokasyon türü" name="kind" defaultValue={stopLocation?.kind ?? 'stop'}>
+              <option value="stop">Durak</option>
+              <option value="start">Başlangıç konumu</option>
+              <option value="end">Bitiş konumu</option>
+            </SelectField>
+          </div>
           <p className="text-xs text-zinc-500">
-            Kamyon bu yarıçap içine girdiğinde varış otomatik kaydedilir.
+            Kamyon bu yarıçap içine girdiğinde varış otomatik kaydedilir. Araç başına yalnızca
+            bir başlangıç ve bir bitiş konumu olabilir; yenisini seçtiğinizde eskisi durağa döner.
+            Araç bitiş konumundan ayrıldıktan sonraki iz, Geçmiş sekmesinde{' '}
+            <span className="font-medium text-amber-600">dönüş güzergahı</span> olarak ayrı gösterilir.
           </p>
         </ActionForm>
       )}

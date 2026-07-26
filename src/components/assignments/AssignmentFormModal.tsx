@@ -5,9 +5,10 @@ import ActionForm from '../ActionForm';
 import { TextField, SelectField, TextareaField } from '../fields';
 import { createAssignment } from '@/actions/assignments';
 import { primaryBtn } from '../formStyles';
+import { lastNDates } from '@/lib/format';
 import type { Vehicle, Driver } from '@/lib/types';
 
-/** Sürücü-araç ataması oluşturma modalı. Araç ve aktif şoför listeleri props ile gelir. */
+/** Şoför-araç tanımı oluşturma modalı. Araç ve aktif şoför listeleri props ile gelir. */
 export default function AssignmentFormModal({
   vehicles,
   drivers,
@@ -15,10 +16,12 @@ export default function AssignmentFormModal({
   vehicles: Vehicle[];
   drivers: Driver[];
 }) {
+  const today = lastNDates(1)[0];
+
   return (
-    <Modal triggerLabel="+ Yeni Atama" triggerClassName={primaryBtn} title="Yeni Atama">
+    <Modal triggerLabel="+ Yeni Tanım" triggerClassName={primaryBtn} title="Yeni Şoför-Araç Tanımı">
       {(close) => (
-        <ActionForm action={createAssignment} submitLabel="Ata" onSuccess={close}>
+        <ActionForm action={createAssignment} submitLabel="Tanımla" onSuccess={close}>
           <SelectField label="Araç *" name="vehicle_id" required>
             <option value="">Seçiniz…</option>
             {vehicles.map((v) => (
@@ -37,7 +40,8 @@ export default function AssignmentFormModal({
             ))}
           </SelectField>
 
-          <TextField label="Atama tarihi" name="assigned_date" type="date" />
+          {/* Gelecek tarih engellenir: sonlandırma released_date >= assigned_date kısıtına takılır */}
+          <TextField label="Tanım tarihi" name="assigned_date" type="date" max={today} />
           <TextareaField label="Not" name="notes" />
         </ActionForm>
       )}

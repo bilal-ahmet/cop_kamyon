@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getVehicleById, getVehicleWaypoints } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
+import StopKindBadge from '@/components/stopLocations/StopKindBadge';
 
 // "Duraklar" sekmesi: geofencing ile otomatik oluşan ziyaret kayıtları.
 // Kamyon bir lokasyona yaklaştığında arrived_at, ayrıldığında departed_at otomatik set edilir.
@@ -20,8 +21,8 @@ export default async function VehicleWaypointsTab({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-zinc-500">
-        Kamyon tanımlı lokasyonlara yaklaştığında kayıtlar otomatik oluşur.
-        Yük bilgisini güncellemek için satırdaki <strong>Düzenle</strong> butonunu kullanın.
+        Kamyon <strong>Lokasyonlar</strong> sekmesinde tanımlı bir noktanın yarıçapına
+        girdiğinde kayıtlar otomatik oluşur. Başlangıç ve bitiş konumları rozetle işaretlenir.
       </p>
 
       {waypoints.length === 0 ? (
@@ -33,8 +34,11 @@ export default async function VehicleWaypointsTab({
           {waypoints.map((w) => (
             <li key={w.id} className="rounded-lg border border-zinc-200 bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium text-zinc-900">
-                  {w.location_name ?? 'Bilinmeyen konum'}
+                <span className="flex items-center gap-2">
+                  <span className="font-medium text-zinc-900">
+                    {w.location_name ?? 'Bilinmeyen konum'}
+                  </span>
+                  <StopKindBadge kind={w.stop_kind} />
                 </span>
                 <span className="text-xs text-zinc-400">
                   {Number(w.lat).toFixed(5)}, {Number(w.lon).toFixed(5)}

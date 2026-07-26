@@ -10,6 +10,7 @@ export function TextField({
   type = 'text',
   placeholder,
   step,
+  max,
 }: {
   label: string;
   name: string;
@@ -18,6 +19,7 @@ export function TextField({
   type?: string;
   placeholder?: string;
   step?: string;
+  max?: string | number;
 }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
@@ -28,6 +30,7 @@ export function TextField({
         required={required}
         placeholder={placeholder}
         step={step}
+        max={max}
         defaultValue={defaultValue ?? undefined}
         className={inputCls}
       />

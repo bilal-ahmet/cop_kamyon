@@ -79,6 +79,8 @@ export interface Waypoint {
   arrived_at: string;
   departed_at: string | null;
   notes: string | null;
+  /** Bağlı stop_location'ın türü (JOIN ile gelir); serbest duraklarda null. */
+  stop_kind?: StopLocationKind | null;
 }
 
 /** IoT/GPS sensör cihazı (GET /sensors/:id, GET /vehicles/:id/sensors). */
@@ -135,6 +137,14 @@ export interface TelemetryRecord {
   received_at: string;
 }
 
+/**
+ * Lokasyon türü:
+ * - stop  → sıradan durak
+ * - start → güzergah başlangıcı
+ * - end   → güzergah bitişi (araç buradan ayrılınca dönüş rotası başlar)
+ */
+export type StopLocationKind = 'stop' | 'start' | 'end';
+
 /** Araç için önceden tanımlı çöp toplama noktası (geofencing referansı). */
 export interface StopLocation {
   id: number;
@@ -143,8 +153,23 @@ export interface StopLocation {
   lat: number;
   lon: number;
   radius_m: number;
+  kind: StopLocationKind;
   is_active: boolean;
   created_at: string;
+}
+
+/** Güzergah bacağı: gidiş (başlangıç → bitiş) veya dönüş (bitişten sonrası). */
+export type RouteLeg = 'out' | 'return';
+
+/** Haritada çizilen iz noktası — konum + zaman damgası (hover ipucu ve km hesabı için). */
+export interface TrackPoint {
+  lat: number;
+  lon: number;
+  /** recorded_at (ISO) */
+  t: string;
+  /** speed_kmh */
+  speed?: number | null;
+  leg?: RouteLeg;
 }
 
 /** Oturum sahibinin tam profili (GET /users/me, GET /users satırı). */

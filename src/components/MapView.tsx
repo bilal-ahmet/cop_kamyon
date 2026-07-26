@@ -11,9 +11,15 @@ import Map, {
   type MapRef,
 } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Map as MapLibreMap } from 'maplibre-gl';
-import type { StopLocation } from '@/lib/types';
+import type { Map as MapLibreMap, MapLayerMouseEvent } from 'maplibre-gl';
+import type { StopLocation, TrackPoint, RouteLeg } from '@/lib/types';
 import type { PoiItem } from '@/lib/overpass';
+import { nearestPoint } from '@/lib/geo';
+import { formatTime } from '@/lib/format';
+
+// Gidiş mavi, dönüş turuncu — LiveVehicleMap'teki lejant ile aynı renkler.
+const LEG_COLOR: Record<RouteLeg, string> = { out: '#2563eb', return: '#f59e0b' };
+const LEG_LABEL: Record<RouteLeg, string> = { out: 'Gidiş güzergahı', return: 'Dönüş güzergahı' };
 
 // Basemap seçimi: MapTiler anahtarı varsa Google'a en yakın hazır stil (Streets v2),
 // yoksa ücretsiz/anahtarsız OpenFreeMap Bright. Anahtar .env.local'da NEXT_PUBLIC_MAPTILER_KEY.
@@ -229,6 +235,7 @@ type EnhancedMap = MapLibreMap & { __copEnhancedStyle?: string };
  * birikmesin). Terrain durumu her çağrıda mevcut 3B durumuna eşitlenir.
  */
 function applyEnhancements(map: MapLibreMap, styleKey: string, is3d: boolean) {
+  addRouteArrowImage(map); // setStyle görselleri de sildiği için stil anahtarından bağımsız
   const m = map as EnhancedMap;
   if (m.__copEnhancedStyle !== styleKey) {
     m.__copEnhancedStyle = styleKey;
@@ -239,8 +246,79 @@ function applyEnhancements(map: MapLibreMap, styleKey: string, is3d: boolean) {
   }
 }
 
+const ROUTE_ARROW = 'cop-route-arrow';
+
+/**
+ * İz üzerindeki yön okunu canvas'tan üretip haritaya kaydeder (harici dosya yok).
+ *
+ * Ok SAĞA bakar: symbol-placement:'line' ikonun +x eksenini çizginin gidiş
+ * yönüne hizalar (OSM stillerindeki "oneway" ok sprite'ları gibi). Noktalar
+ * kronolojik sırada olduğundan oklar hareket yönünü gösterir.
+ */
+function addRouteArrowImage(map: MapLibreMap) {
+  if (map.hasImage(ROUTE_ARROW)) return;
+  const S = 24;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.beginPath();
+  ctx.moveTo(S - 4, S / 2); // sağdaki uç
+  ctx.lineTo(6, 4);
+  ctx.lineTo(10, S / 2); // arka çentik — ok daha keskin görünür
+  ctx.lineTo(6, S - 4);
+  ctx.closePath();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,.5)';
+  ctx.stroke();
+
+  const { data, width, height } = ctx.getImageData(0, 0, S, S);
+  // pixelRatio 2 → 24px'lik görsel haritada 12 CSS px olarak çizilir (net kenar).
+  map.addImage(ROUTE_ARROW, { width, height, data: new Uint8ClampedArray(data) }, { pixelRatio: 2 });
+}
+
 // Leaflet [lat, lon] kullanır; MapLibre [lng, lat] bekler. Tek yerden çeviririz.
-const toLngLat = (p: [number, number]): [number, number] => [p[1], p[0]];
+const toLngLat = (p: TrackPoint): [number, number] => [p.lon, p.lat];
+
+/**
+ * Ardışık aynı bacağa ait noktaları tek LineString'de toplar. Bacak değişiminde
+ * çizginin kopmaması için sınır noktası her iki parçaya da eklenir.
+ */
+function legFeatures(points: TrackPoint[]): GeoJSON.Feature<GeoJSON.LineString>[] {
+  const features: GeoJSON.Feature<GeoJSON.LineString>[] = [];
+  let current: TrackPoint[] = [];
+  let currentLeg: RouteLeg = points[0]?.leg ?? 'out';
+
+  const flush = () => {
+    if (current.length > 1) {
+      features.push({
+        type: 'Feature',
+        properties: { leg: currentLeg },
+        geometry: { type: 'LineString', coordinates: current.map(toLngLat) },
+      });
+    }
+  };
+
+  for (const p of points) {
+    const leg = p.leg ?? 'out';
+    if (leg !== currentLeg && current.length > 0) {
+      current.push(p); // sınır noktası: iki parça birleşik görünsün
+      flush();
+      current = [p];
+      currentLeg = leg;
+    } else {
+      current.push(p);
+    }
+  }
+  flush();
+  return features;
+}
 
 const POI_EMOJI: Record<PoiItem['category'], string> = {
   school: '🏫',
@@ -333,13 +411,13 @@ function FlyToPoint({ point }: { point: [number, number] | null | undefined }) {
   const { current: map } = useMap();
   useEffect(() => {
     if (!map || !point) return;
-    map.flyTo({ center: toLngLat(point), zoom: 17 });
+    map.flyTo({ center: [point[1], point[0]], zoom: 17 });
   }, [point, map]);
   return null;
 }
 
 /** Geçmiş rota gösterilince haritayı tüm rotayı kapsayacak şekilde ayarlar. */
-function FitBounds({ positions }: { positions: [number, number][] }) {
+function FitBounds({ positions }: { positions: TrackPoint[] }) {
   const { current: map } = useMap();
   useEffect(() => {
     if (!map || positions.length === 0) return;
@@ -348,7 +426,7 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
       return;
     }
     let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-    for (const [lat, lon] of positions) {
+    for (const { lat, lon } of positions) {
       minLng = Math.min(minLng, lon);
       maxLng = Math.max(maxLng, lon);
       minLat = Math.min(minLat, lat);
@@ -369,7 +447,8 @@ export default function MapView({
   stopLocations,
   focusPoint,
   vehicleId,
-  trailPositions,
+  trackPoints,
+  routeAnchors,
   mode = 'live',
 }: {
   lat: number;
@@ -378,11 +457,16 @@ export default function MapView({
   stopLocations?: StopLocation[];
   focusPoint?: [number, number] | null;
   vehicleId?: number;
-  trailPositions?: [number, number][];
+  /** Çizilecek iz — kronolojik sırada, her nokta zaman damgası ve bacak bilgisi taşır. */
+  trackPoints?: TrackPoint[];
+  /** Geçmiş modda da gösterilen başlangıç/bitiş lokasyonları. */
+  routeAnchors?: StopLocation[];
   mode?: 'live' | 'history';
 }) {
   const [pois, setPois] = useState<PoiItem[]>([]);
   const [popup, setPopup] = useState<PopupInfo | null>(null);
+  // İz üzerinde fare ile gezinirken gösterilen saat ipucu (tıklama popup'ından ayrı).
+  const [hover, setHover] = useState<PopupInfo | null>(null);
   const isHistory = mode === 'history';
 
   const mapRef = useRef<MapRef>(null);
@@ -444,23 +528,24 @@ export default function MapView({
   }, [vehicleId, lat, lon, isHistory]);
 
   // Geçmiş modda rota kronolojik sırada gelir: ilk nokta başlangıç, son nokta bitiş.
-  const route = trailPositions ?? [];
+  const route = trackPoints ?? [];
   const startPt = isHistory && route.length > 0 ? route[0] : null;
   const endPt = isHistory && route.length > 0 ? route[route.length - 1] : null;
 
   const activeStops = stopLocations?.filter((sl) => sl.is_active) ?? [];
+  const anchors = routeAnchors ?? [];
 
-  // Rota polyline'ı (GeoJSON LineString, [lng, lat] sırasında)
-  const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
-    type: 'Feature',
-    properties: {},
-    geometry: { type: 'LineString', coordinates: route.map(toLngLat) },
+  // Rota: her bacak (gidiş/dönüş) ayrı LineString — renk `leg` özelliğinden gelir.
+  const routeGeoJSON: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
+    type: 'FeatureCollection',
+    features: legFeatures(route),
   };
 
-  // Tüm aktif durakların geofence çemberleri tek FeatureCollection'da
+  // Geofence çemberleri: aktif duraklar + (geçmiş modda) başlangıç/bitiş lokasyonları
+  const circleStops = [...activeStops, ...anchors];
   const geofenceFC: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
     type: 'FeatureCollection',
-    features: activeStops.map((sl) => ({
+    features: circleStops.map((sl) => ({
       type: 'Feature',
       properties: {},
       geometry: {
@@ -470,6 +555,22 @@ export default function MapView({
     })),
   };
 
+  // İz üzerinde gezinme: en yakın noktanın saatini/hızını ipucu olarak göster.
+  function handleTrackHover(e: MapLayerMouseEvent) {
+    // interactiveLayerIds sayesinde e.features yalnızca iz üzerindeyken dolu gelir.
+    if (!e.features?.length) {
+      if (hover) setHover(null);
+      return;
+    }
+    const p = nearestPoint(route, e.lngLat.lat, e.lngLat.lng);
+    if (!p) return;
+    // Aynı noktadaysak state'i tazeleme — her fare hareketinde render olmasın.
+    if (hover && hover.lng === p.lon && hover.lat === p.lat) return;
+    const parts = [LEG_LABEL[p.leg ?? 'out']];
+    if (p.speed != null) parts.push(`${Math.round(Number(p.speed))} km/s`);
+    setHover({ lng: p.lon, lat: p.lat, title: formatTime(p.t), subtitle: parts.join(' · ') });
+  }
+
   return (
     <Map
       ref={mapRef}
@@ -478,8 +579,12 @@ export default function MapView({
       style={{ width: '100%', height: '100%' }}
       dragRotate={false}
       attributionControl={{ compact: true }}
+      interactiveLayerIds={route.length > 1 ? ['route-hit'] : undefined}
+      cursor={hover ? 'pointer' : undefined}
       onLoad={(e) => applyEnhancements(e.target as unknown as MapLibreMap, activeStyle, is3d)}
       onStyleData={(e) => applyEnhancements(e.target as unknown as MapLibreMap, activeStyle, is3d)}
+      onMouseMove={handleTrackHover}
+      onMouseOut={() => setHover(null)}
     >
       <NavigationControl position="top-right" showCompass={false} />
       <MapButton
@@ -517,14 +622,41 @@ export default function MapView({
         </Source>
       )}
 
-      {/* Araç rota izi */}
+      {/* Araç rota izi — gidiş mavi, dönüş turuncu; üzerinde gidiş yönü okları */}
       {route.length > 1 && (
         <Source id="route" type="geojson" data={routeGeoJSON}>
           <Layer
             id="route-line"
             type="line"
             layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-color': '#2563eb', 'line-width': 3, 'line-opacity': 0.7 }}
+            paint={{
+              'line-color': ['match', ['get', 'leg'], 'return', LEG_COLOR.return, LEG_COLOR.out],
+              'line-width': 4,
+              'line-opacity': 0.75,
+            }}
+          />
+          {/* Yön okları: symbol-placement 'line' ikonu çizginin gidiş yönüne döndürür.
+              Noktalar kronolojik sırada olduğu için oklar hareket yönünü gösterir. */}
+          <Layer
+            id="route-arrows"
+            type="symbol"
+            layout={{
+              'symbol-placement': 'line',
+              'symbol-spacing': 70,
+              'icon-image': ROUTE_ARROW,
+              'icon-size': 1,
+              'icon-rotation-alignment': 'map',
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+              'icon-padding': 0,
+            }}
+          />
+          {/* Görünmez geniş vuruş katmanı — ize fareyle isabet etmeyi kolaylaştırır */}
+          <Layer
+            id="route-hit"
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': '#000000', 'line-width': 18, 'line-opacity': 0 }}
           />
         </Source>
       )}
@@ -585,15 +717,20 @@ export default function MapView({
         </Marker>
       )}
 
-      {/* Geçmiş mod: başlangıç (yeşil) ve bitiş (kırmızı) işaretçileri */}
+      {/* Geçmiş mod: izin ilk (yeşil) ve son (kırmızı) noktası */}
       {startPt && (
         <Marker
-          longitude={startPt[1]}
-          latitude={startPt[0]}
+          longitude={startPt.lon}
+          latitude={startPt.lat}
           anchor="center"
           onClick={(e) => {
             e.originalEvent.stopPropagation();
-            setPopup({ lng: startPt[1], lat: startPt[0], title: 'Başlangıç' });
+            setPopup({
+              lng: startPt.lon,
+              lat: startPt.lat,
+              title: 'İz başlangıcı',
+              subtitle: formatTime(startPt.t),
+            });
           }}
         >
           <EndpointDot color="#16a34a" />
@@ -601,17 +738,57 @@ export default function MapView({
       )}
       {endPt && (
         <Marker
-          longitude={endPt[1]}
-          latitude={endPt[0]}
+          longitude={endPt.lon}
+          latitude={endPt.lat}
           anchor="center"
           onClick={(e) => {
             e.originalEvent.stopPropagation();
-            setPopup({ lng: endPt[1], lat: endPt[0], title: 'Bitiş' });
+            setPopup({
+              lng: endPt.lon,
+              lat: endPt.lat,
+              title: 'İz bitişi',
+              subtitle: formatTime(endPt.t),
+            });
           }}
         >
           <EndpointDot color="#dc2626" />
         </Marker>
       )}
+
+      {/* Tanımlı başlangıç/bitiş lokasyonları — geçmiş modda da görünür */}
+      {anchors.map((sl) => {
+        const sLat = Number(sl.lat), sLon = Number(sl.lon);
+        const isStart = sl.kind === 'start';
+        return (
+          <Marker
+            key={`anchor-${sl.id}`}
+            longitude={sLon}
+            latitude={sLat}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setPopup({
+                lng: sLon,
+                lat: sLat,
+                title: sl.name,
+                subtitle: `${isStart ? 'Başlangıç konumu' : 'Bitiş konumu'} · ${sl.radius_m} m`,
+              });
+            }}
+          >
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 22, height: 22, borderRadius: '50%', fontSize: 11,
+                background: isStart ? '#059669' : '#dc2626',
+                border: '3px solid white', color: 'white', fontWeight: 700,
+                boxShadow: '0 1px 5px rgba(0,0,0,.5)', cursor: 'pointer',
+              }}
+            >
+              {isStart ? 'B' : 'V'}
+            </div>
+          </Marker>
+        );
+      })}
 
       {/* Durak markerları */}
       {activeStops.map((sl) => {
@@ -691,6 +868,27 @@ export default function MapView({
             <>
               <br />
               <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{popup.subtitle}</span>
+            </>
+          )}
+        </Popup>
+      )}
+
+      {/* İz üzerinde gezinme ipucu — saat bilgisi (kapatma düğmesi yok, fare ile takip eder) */}
+      {hover && (
+        <Popup
+          longitude={hover.lng}
+          latitude={hover.lat}
+          anchor="bottom"
+          offset={12}
+          closeButton={false}
+          closeOnClick={false}
+          onClose={() => setHover(null)}
+        >
+          <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{hover.title}</strong>
+          {hover.subtitle && (
+            <>
+              <br />
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{hover.subtitle}</span>
             </>
           )}
         </Popup>
