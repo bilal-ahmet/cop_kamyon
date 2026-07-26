@@ -46,16 +46,56 @@ export async function updateDriver(
   return { ok: true };
 }
 
-/** Sürücüyü devre dışı bırakır (DELETE /drivers/:id). */
+/** Sürücüyü devre dışı bırakır (POST /drivers/:id/deactivate). Geçmişi korunur. */
 export async function deactivateDriver(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
   const id = Number(formData.get('id'));
+  if (!id) return { error: 'Geçersiz şoför.' };
+
+  const res = await apiMutate(`/drivers/${id}/deactivate`, 'POST');
+  if (!res.ok) return { error: res.error };
+
+  revalidateDriver();
+  return { ok: true };
+}
+
+/** Pasif sürücüyü tekrar aktif eder (PUT /drivers/:id { is_active: true }). */
+export async function activateDriver(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  if (!id) return { error: 'Geçersiz şoför.' };
+
+  const res = await apiMutate<Driver>(`/drivers/${id}`, 'PUT', { is_active: true });
+  if (!res.ok) return { error: res.error };
+
+  revalidateDriver();
+  return { ok: true };
+}
+
+/**
+ * Sürücüyü kalıcı olarak siler (DELETE /drivers/:id).
+ * Geçmişi olan şoför silinemez; backend 409 ile açıklayıcı mesaj döner.
+ */
+export async function deleteDriver(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  if (!id) return { error: 'Geçersiz şoför.' };
 
   const res = await apiMutate(`/drivers/${id}`, 'DELETE');
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/soforler');
+  revalidateDriver();
   return { ok: true };
+}
+
+/** Şoför listesi hem Şoförler sayfasında hem tanımlama formunda kullanılıyor. */
+function revalidateDriver() {
+  revalidatePath('/dashboard/soforler');
+  revalidatePath('/dashboard/atamalar');
 }

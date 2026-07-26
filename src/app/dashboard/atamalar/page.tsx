@@ -4,7 +4,7 @@ import { formatDate } from '@/lib/format';
 import AssignmentFormModal from '@/components/assignments/AssignmentFormModal';
 import AssignmentEditModal from '@/components/assignments/AssignmentEditModal';
 import ConfirmButton from '@/components/ConfirmButton';
-import { endAssignment, deleteAssignment } from '@/actions/assignments';
+import { endAssignment, reopenAssignment, deleteAssignment } from '@/actions/assignments';
 import { dangerBtn, secondaryBtn } from '@/components/formStyles';
 
 export default async function AssignmentsPage() {
@@ -65,12 +65,20 @@ export default async function AssignmentsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <AssignmentEditModal assignment={a} />
-                  {active && (
+                  {active ? (
                     <ConfirmButton
                       action={endAssignment}
                       hidden={{ id: a.id }}
                       label="Sonlandır"
-                      confirmText={`${a.driver_name ?? 'Şoför'} — ${a.vehicle_plate ?? 'araç'} tanımını sonlandırmak istediğinize emin misiniz?`}
+                      confirmText={`${a.driver_name ?? 'Şoför'} → ${a.vehicle_plate ?? 'araç'} tanımı sonlandırılacak. Emin misiniz?`}
+                      className={secondaryBtn}
+                    />
+                  ) : (
+                    <ConfirmButton
+                      action={reopenAssignment}
+                      hidden={{ id: a.id }}
+                      label="Tekrar aktif et"
+                      confirmText={`${a.driver_name ?? 'Şoför'} → ${a.vehicle_plate ?? 'araç'} tanımı tekrar aktif edilecek. Onaylıyor musunuz?`}
                       className={secondaryBtn}
                     />
                   )}

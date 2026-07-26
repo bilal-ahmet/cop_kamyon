@@ -63,6 +63,26 @@ export async function endAssignment(
   return { ok: true };
 }
 
+/**
+ * Sonlanmış tanımı tekrar aktif eder (PUT /assignments/:id { released_date: null }).
+ * Araçta başka bir aktif tanım varsa backend 409 ile engeller.
+ */
+export async function reopenAssignment(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  if (!id) return { error: 'Geçersiz kayıt.' };
+
+  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}`, 'PUT', {
+    released_date: null,
+  });
+  if (!res.ok) return { error: res.error };
+
+  revalidatePath('/dashboard/atamalar');
+  return { ok: true };
+}
+
 /** Tanımı kalıcı olarak siler (DELETE /assignments/:id). */
 export async function deleteAssignment(
   _prev: ActionState | undefined,

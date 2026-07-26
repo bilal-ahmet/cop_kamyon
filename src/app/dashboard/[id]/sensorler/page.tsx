@@ -3,7 +3,7 @@ import { getVehicleById, getVehicleSensors } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import SensorFormModal from '@/components/sensors/SensorFormModal';
 import ConfirmButton from '@/components/ConfirmButton';
-import { deactivateSensor, deleteSensor } from '@/actions/sensors';
+import { deactivateSensor, activateSensor, deleteSensor } from '@/actions/sensors';
 import { dangerBtn, secondaryBtn } from '@/components/formStyles';
 
 // "Sensörler" sekmesi: araca takılı IoT/GPS sensörlerinin yönetimi.
@@ -60,12 +60,20 @@ export default async function VehicleSensorsTab({
                 </div>
                 <div className="flex items-center gap-2">
                   <SensorFormModal vehicleId={vehicleId} sensor={s} />
-                  {s.is_active && (
+                  {s.is_active ? (
                     <ConfirmButton
                       action={deactivateSensor}
                       hidden={{ id: s.id, vehicle_id: vehicleId }}
                       label="Devre dışı"
                       confirmText={`${s.serial_number} sensörü devre dışı bırakılacak; telemetri geçmişi korunur. Emin misiniz?`}
+                      className={secondaryBtn}
+                    />
+                  ) : (
+                    <ConfirmButton
+                      action={activateSensor}
+                      hidden={{ id: s.id, vehicle_id: vehicleId }}
+                      label="Tekrar aktif et"
+                      confirmText={`${s.serial_number} tekrar aktif edilecek ve telemetri kabul etmeye başlayacak. Onaylıyor musunuz?`}
                       className={secondaryBtn}
                     />
                   )}

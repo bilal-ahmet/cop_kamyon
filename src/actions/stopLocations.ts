@@ -95,6 +95,22 @@ export async function deactivateStopLocation(
   return { ok: true };
 }
 
+/** Pasif lokasyonu tekrar aktif eder (PUT /stop-locations/:id { is_active: true }). */
+export async function activateStopLocation(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  const vehicleId = Number(formData.get('vehicle_id'));
+  if (!id) return { error: 'Geçersiz lokasyon.' };
+
+  const res = await apiMutate<StopLocation>(`/stop-locations/${id}`, 'PUT', { is_active: true });
+  if (!res.ok) return { error: res.error };
+
+  revalidateStopLocation(vehicleId);
+  return { ok: true };
+}
+
 /** Durak lokasyonunu kalıcı olarak siler (DELETE /stop-locations/:id). */
 export async function deleteStopLocation(
   _prev: ActionState | undefined,

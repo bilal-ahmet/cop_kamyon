@@ -70,6 +70,22 @@ export async function deactivateSensor(
   return { ok: true };
 }
 
+/** Pasif sensörü tekrar aktif eder (PUT /sensors/:id { is_active: true }). */
+export async function activateSensor(
+  _prev: ActionState | undefined,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = Number(formData.get('id'));
+  const vehicle_id = Number(formData.get('vehicle_id'));
+  if (!id) return { error: 'Geçersiz sensör.' };
+
+  const res = await apiMutate<Sensor>(`/sensors/${id}`, 'PUT', { is_active: true });
+  if (!res.ok) return { error: res.error };
+
+  revalidatePath(`/dashboard/${vehicle_id}/sensorler`);
+  return { ok: true };
+}
+
 /**
  * Sensörü kalıcı olarak siler (DELETE /sensors/:id).
  * Telemetri kaydı olan sensör silinemez; backend 409 ile açıklayıcı mesaj döner.
