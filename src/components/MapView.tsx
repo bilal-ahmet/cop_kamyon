@@ -14,12 +14,16 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Map as MapLibreMap, MapLayerMouseEvent } from 'maplibre-gl';
 import type { StopLocation, TrackPoint, RouteLeg } from '@/lib/types';
 import type { PoiItem } from '@/lib/overpass';
-import { nearestPoint } from '@/lib/geo';
+import { chaikinSmooth, nearestPoint } from '@/lib/geo';
 import { formatTime } from '@/lib/format';
 
 // Gidiş mavi, dönüş turuncu — LiveVehicleMap'teki lejant ile aynı renkler.
 const LEG_COLOR: Record<RouteLeg, string> = { out: '#2563eb', return: '#f59e0b' };
 const LEG_LABEL: Record<RouteLeg, string> = { out: 'Gidiş güzergahı', return: 'Dönüş güzergahı' };
+
+// Cihaz ~5 sn'de bir veri gönderir; marker (ve kamera) iki konum arasında bu sürede kayar,
+// böylece araç bir sonraki veri gelene kadar durmadan hareket ediyormuş gibi görünür.
+const POSITION_ANIM_MS = 5000;
 
 // Basemap seçimi: MapTiler anahtarı varsa Google'a en yakın hazır stil (Streets v2),
 // yoksa ücretsiz/anahtarsız OpenFreeMap Bright. Anahtar .env.local'da NEXT_PUBLIC_MAPTILER_KEY.
@@ -305,7 +309,9 @@ function legFeatures(points: TrackPoint[]): GeoJSON.Feature<GeoJSON.LineString>[
       features.push({
         type: 'Feature',
         properties: { leg: currentLeg },
-        geometry: { type: 'LineString', coordinates: current.map(toLngLat) },
+        // Chaikin yumuşatma yalnızca görsel geometriye uygulanır; hover ipucu ve
+        // km hesapları ham noktalarla çalışmaya devam eder.
+        geometry: { type: 'LineString', coordinates: chaikinSmooth(current.map(toLngLat)) },
       });
     }
   };
@@ -406,7 +412,8 @@ function Recenter({ lat, lon, paused }: { lat: number; lon: number; paused: bool
   const { current: map } = useMap();
   useEffect(() => {
     if (!map || paused) return;
-    map.easeTo({ center: [lon, lat], duration: 800 });
+    // Marker'la aynı sürede kayar; kamera araçtan önde gitmez.
+    map.easeTo({ center: [lon, lat], duration: POSITION_ANIM_MS });
   }, [lat, lon, paused, map]);
   return null;
 }
@@ -508,10 +515,9 @@ export default function MapView({
       return;
     }
     const start = performance.now();
-    const DUR = 2200; // POLL_MS'ten biraz kısa: sonraki konum gelmeden tamamlanır
     cancelAnimationFrame(rafId.current);
     const step = (now: number) => {
-      const t = Math.min((now - start) / DUR, 1);
+      const t = Math.min((now - start) / POSITION_ANIM_MS, 1);
       const cur: [number, number] = [fromLng + dLng * t, fromLat + dLat * t];
       animFrom.current = cur;
       setAnimPos(cur);

@@ -96,6 +96,31 @@ export function splitLegs(
   }));
 }
 
+/**
+ * Chaikin köşe kesme: kırık çizgiyi köşeleri yuvarlayarak yumuşatır.
+ * Her iterasyon segmentleri 1/4–3/4 noktalarıyla böler; uç noktalar korunur.
+ * Birimden bağımsızdır — [lng, lat] veya [lat, lon] fark etmez.
+ */
+export function chaikinSmooth(
+  coords: [number, number][],
+  iterations = 2,
+): [number, number][] {
+  let pts = coords;
+  for (let iter = 0; iter < iterations; iter++) {
+    if (pts.length < 3) return pts;
+    const out: [number, number][] = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[i + 1];
+      out.push([x0 * 0.75 + x1 * 0.25, y0 * 0.75 + y1 * 0.25]);
+      out.push([x0 * 0.25 + x1 * 0.75, y0 * 0.25 + y1 * 0.75]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
+
 /** İz üzerinde verilen koordinata en yakın noktayı bulur (hover ipucu için). */
 export function nearestPoint(
   points: TrackPoint[],
