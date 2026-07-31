@@ -15,12 +15,15 @@ export function normalizeLocation(raw: Record<string, unknown>): VehicleLocation
   return {
     lat: toNum(raw.lat) ?? 0,
     lon: toNum(raw.lon) ?? 0,
+    altitude_m: toNum(raw.altitude_m),
     cog_deg: toNum(raw.cog_deg),
     speed_kmh: toNum(raw.speed_kmh),
     speed_knots: toNum(raw.speed_knots),
     load_kg: toNum(raw.load_kg),
     recorded_at: String(raw.recorded_at),
     fix_valid: Boolean(raw.fix_valid),
+    fix_type: toNum(raw.fix_type),
+    satellites: toNum(raw.satellites),
   };
 }
 
@@ -32,8 +35,11 @@ export function normalizeTelemetry(raw: Record<string, unknown>): TelemetryRecor
     vehicle_id: Number(raw.vehicle_id),
     lat: toNum(raw.lat) ?? 0,
     lon: toNum(raw.lon) ?? 0,
+    altitude_m: toNum(raw.altitude_m),
     cog_deg: toNum(raw.cog_deg),
     fix_valid: Boolean(raw.fix_valid),
+    fix_type: toNum(raw.fix_type),
+    satellites: toNum(raw.satellites),
     speed_kmh: toNum(raw.speed_kmh),
     speed_knots: toNum(raw.speed_knots),
     load_kg: toNum(raw.load_kg),

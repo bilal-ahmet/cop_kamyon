@@ -81,8 +81,10 @@ export default async function VehicleTelemetryTab({
                   <th className="px-3 py-2">#</th>
                   <th className="px-3 py-2">Zaman</th>
                   <th className="px-3 py-2">Konum</th>
+                  <th className="px-3 py-2">Yükseklik</th>
                   <th className="px-3 py-2">Hız</th>
                   <th className="px-3 py-2">Yük (kg)</th>
+                  <th className="px-3 py-2">Uydu</th>
                   <th className="px-3 py-2">Fix</th>
                 </tr>
               </thead>
@@ -99,16 +101,24 @@ export default async function VehicleTelemetryTab({
                       {r.lat.toFixed(5)}, {r.lon.toFixed(5)}
                     </td>
                     <td className="px-3 py-2 tabular-nums text-zinc-700">
+                      {r.altitude_m != null ? `${Math.round(r.altitude_m)} m` : '—'}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-zinc-700">
                       {r.speed_kmh != null ? `${Math.round(r.speed_kmh)} km/s` : '—'}
                     </td>
                     <td className="px-3 py-2 tabular-nums text-zinc-700">{r.load_kg ?? '—'}</td>
+                    <td className="px-3 py-2 tabular-nums text-zinc-700">{r.satellites ?? '—'}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           r.fix_valid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                         }`}
                       >
-                        {r.fix_valid ? 'Geçerli' : 'Geçersiz'}
+                        {r.fix_valid
+                          ? r.fix_type != null
+                            ? `${r.fix_type}D Fix`
+                            : 'Geçerli'
+                          : 'Geçersiz'}
                       </span>
                     </td>
                   </tr>

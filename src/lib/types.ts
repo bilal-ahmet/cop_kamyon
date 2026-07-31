@@ -35,12 +35,18 @@ export interface Vehicle {
 export interface VehicleLocation {
   lat: number;
   lon: number;
+  /** GNSS yüksekliği (deniz seviyesine göre, metre). */
+  altitude_m: number | null;
   cog_deg: number | null;
   speed_kmh: number | null;
   speed_knots: number | null;
   load_kg: number | null;
   recorded_at: string;
   fix_valid: boolean;
+  /** GNSS fix türü: 0/1=fix yok, 2=2D, 3=3D. Eski kayıtlarda null. */
+  fix_type: number | null;
+  /** Konum hesabında kullanılan uydu sayısı. */
+  satellites: number | null;
 }
 
 /** Günlük özet (GET /vehicles/:id/summary). — Aşama 2 */
@@ -128,8 +134,14 @@ export interface TelemetryRecord {
   vehicle_id: number;
   lat: number;
   lon: number;
+  /** GNSS yüksekliği (deniz seviyesine göre, metre). */
+  altitude_m: number | null;
   cog_deg: number | null;
   fix_valid: boolean;
+  /** GNSS fix türü: 0/1=fix yok, 2=2D, 3=3D. Eski kayıtlarda null. */
+  fix_type: number | null;
+  /** Konum hesabında kullanılan uydu sayısı. */
+  satellites: number | null;
   speed_kmh: number | null;
   speed_knots: number | null;
   load_kg: number | null;

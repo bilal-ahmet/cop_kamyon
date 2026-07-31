@@ -315,8 +315,16 @@ export default function LiveVehicleMap({
               <Field label="Enlem" value={location.lat.toFixed(6)} />
               <Field label="Boylam" value={location.lon.toFixed(6)} />
               <Field
+                label="Hız"
+                value={location.speed_kmh != null ? `${Math.round(location.speed_kmh)} km/s` : '—'}
+              />
+              <Field
                 label="Yük"
                 value={location.load_kg != null ? `${location.load_kg} kg` : '—'}
+              />
+              <Field
+                label="Uydu"
+                value={location.satellites != null ? String(location.satellites) : '—'}
               />
               <Field label="Bugün gidilen" value={formatKm(liveKm)} />
               <Field label="Son kayıt" value={formatDateTime(location.recorded_at)} />
