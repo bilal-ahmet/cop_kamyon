@@ -55,6 +55,22 @@ export function formatKm(km: number | null | undefined): string {
   return `${kmFmt.format(km)} km`;
 }
 
+/** Saniyeyi "2 gün 3 sa", "1 sa 18 dk", "35 dk" veya "45 sn" biçiminde gösterir. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
+  const total = Math.round(seconds);
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const parts: string[] = [];
+  if (d) parts.push(`${d} gün`);
+  if (h) parts.push(`${h} sa`);
+  if (m) parts.push(`${m} dk`);
+  // Bir dakikadan kısa kesintilerde saniye göster (aksi halde boş string kalırdı).
+  if (!parts.length) parts.push(`${total} sn`);
+  return parts.join(' ');
+}
+
 /**
  * "YYYY-MM-DD" + "HH:MM" → ISO zaman damgası (Istanbul +03:00 sabit).
  * `endOfMinute` true ise saniye 59 alınır (aralık sonu için).

@@ -1,4 +1,4 @@
-import type { VehicleLocation, TelemetryRecord } from './types';
+import type { VehicleLocation, TelemetryRecord, TelemetryGap } from './types';
 
 /**
  * PostgreSQL NUMERIC sütunları pg tarafından STRING olarak döner.
@@ -45,5 +45,21 @@ export function normalizeTelemetry(raw: Record<string, unknown>): TelemetryRecor
     load_kg: toNum(raw.load_kg),
     recorded_at: String(raw.recorded_at),
     received_at: String(raw.received_at),
+  };
+}
+
+/**
+ * Ham kesinti kaydını normalize eder.
+ * `gap_seconds` BIGINT, `lat`/`lon` NUMERIC olduğu için pg bunları string döndürür.
+ */
+export function normalizeTelemetryGap(raw: Record<string, unknown>): TelemetryGap {
+  return {
+    before_id: Number(raw.before_id),
+    after_id: Number(raw.after_id),
+    started_at: String(raw.started_at),
+    resumed_at: String(raw.resumed_at),
+    gap_seconds: toNum(raw.gap_seconds) ?? 0,
+    lat: toNum(raw.lat) ?? 0,
+    lon: toNum(raw.lon) ?? 0,
   };
 }

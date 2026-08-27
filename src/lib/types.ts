@@ -150,6 +150,26 @@ export interface TelemetryRecord {
 }
 
 /**
+ * İki ardışık telemetri kaydı arasındaki veri kesintisi
+ * (GET /vehicles/:id/telemetry/gaps?min_minutes=).
+ */
+export interface TelemetryGap {
+  /** Kesintiden önceki son kaydın id'si. */
+  before_id: number;
+  /** Verinin tekrar geldiği ilk kaydın id'si. */
+  after_id: number;
+  /** Kesintiden önceki son kaydın zamanı — kesintinin başlangıcı. */
+  started_at: string;
+  /** Verinin tekrar geldiği ilk kaydın zamanı. */
+  resumed_at: string;
+  /** Toplam kesinti süresi (saniye). */
+  gap_seconds: number;
+  /** Verinin tekrar geldiği noktanın konumu. */
+  lat: number;
+  lon: number;
+}
+
+/**
  * Lokasyon türü:
  * - stop  → sıradan durak
  * - start → güzergah başlangıcı

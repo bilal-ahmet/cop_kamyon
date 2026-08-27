@@ -3,7 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { getSession, deleteSession } from './session';
-import { normalizeLocation, normalizeTelemetry } from './normalize';
+import { normalizeLocation, normalizeTelemetry, normalizeTelemetryGap } from './normalize';
 import type {
   Vehicle,
   VehicleLocation,
@@ -13,6 +13,7 @@ import type {
   Driver,
   VehicleAssignment,
   TelemetryRecord,
+  TelemetryGap,
   UserProfile,
   StopLocation,
 } from './types';
@@ -209,6 +210,26 @@ export async function getVehicleTelemetry(
 
   const rows = (await apiFetch<Record<string, unknown>[]>(`/vehicles/${id}/telemetry${suffix}`)) ?? [];
   return rows.map(normalizeTelemetry);
+}
+
+/**
+ * Aracın veri kesintileri (GET /vehicles/:id/telemetry/gaps).
+ * Ardışık iki kayıt arasındaki süre `minMinutes` dakikayı aşan yerleri döner.
+ * Fix filtresi uygulanmaz: kesinti "hiç veri gelmemesi" demektir.
+ */
+export async function getVehicleTelemetryGaps(
+  id: number,
+  params: { minMinutes: number; from?: string; to?: string; limit?: number; offset?: number },
+): Promise<TelemetryGap[]> {
+  const qs = new URLSearchParams({ min_minutes: String(params.minMinutes) });
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+
+  const rows =
+    (await apiFetch<Record<string, unknown>[]>(`/vehicles/${id}/telemetry/gaps?${qs}`)) ?? [];
+  return rows.map(normalizeTelemetryGap);
 }
 
 /** Araca takılı sensörler (GET /vehicles/:id/sensors). Aktif + pasif tümü gelir. */
