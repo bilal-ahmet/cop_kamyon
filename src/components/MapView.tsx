@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Map, {
   Marker,
   Popup,
@@ -14,7 +14,12 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Map as MapLibreMap, MapLayerMouseEvent } from 'maplibre-gl';
 import type { StopLocation, TrackPoint, RouteLeg } from '@/lib/types';
 import type { PoiItem } from '@/lib/overpass';
-import { chaikinSmooth, nearestPoint } from '@/lib/geo';
+import {
+  buildPlaybackTrack,
+  chaikinSmooth,
+  nearestPoint,
+  playbackFrameAt,
+} from '@/lib/geo';
 import { formatTime } from '@/lib/format';
 
 // Gidiş mavi, dönüş turuncu — LiveVehicleMap'teki lejant ile aynı renkler.
@@ -24,6 +29,13 @@ const LEG_LABEL: Record<RouteLeg, string> = { out: 'Gidiş güzergahı', return:
 // Cihaz ~5 sn'de bir veri gönderir; marker (ve kamera) iki konum arasında bu sürede kayar,
 // böylece araç bir sonraki veri gelene kadar durmadan hareket ediyormuş gibi görünür.
 const POSITION_ANIM_MS = 5000;
+
+// Geçmiş rota oynatma: 1x hızda tüm güzergah ~30 sn sürer (rota uzunluğundan
+// bağımsız, öngörülebilir bir izleme süresi). Geçilen yol mor çizilir; altındaki
+// mavi/turuncu ham güzergahtan net ayrışır.
+const PLAYBACK_BASE_MS = 30_000;
+const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
+const PLAYBACK_COLOR = '#7c3aed';
 
 // Basemap seçimi: MapTiler anahtarı varsa Google'a en yakın hazır stil (Streets v2),
 // yoksa ücretsiz/anahtarsız OpenFreeMap Bright. Anahtar .env.local'da NEXT_PUBLIC_MAPTILER_KEY.
@@ -483,6 +495,8 @@ export default function MapView({
 
   const mapRef = useRef<MapRef>(null);
   const [is3d, setIs3d] = useState(false);
+  // Rota oynatma başladığında ham güzergah geri plana çekilir (aşağıdaki paint).
+  const [playbackOn, setPlaybackOn] = useState(false);
   const [satellite, setSatellite] = useState(false);
   const activeStyle = satellite && HYBRID_STYLE ? HYBRID_STYLE : MAP_STYLE;
 
@@ -643,7 +657,8 @@ export default function MapView({
             paint={{
               'line-color': ['match', ['get', 'leg'], 'return', LEG_COLOR.return, LEG_COLOR.out],
               'line-width': 4,
-              'line-opacity': 0.75,
+              // Oynatma sırasında mor "geçilen yol" izi öne çıksın.
+              'line-opacity': playbackOn ? 0.28 : 0.75,
             }}
           />
           {/* Yön okları: symbol-placement 'line' ikonu çizginin gidiş yönüne döndürür.
@@ -662,6 +677,7 @@ export default function MapView({
               'icon-ignore-placement': true,
               'icon-padding': 0,
             }}
+            paint={{ 'icon-opacity': playbackOn ? 0.35 : 1 }}
           />
           {/* Görünmez geniş vuruş katmanı — ize fareyle isabet etmeyi kolaylaştırır */}
           <Layer
@@ -684,48 +700,7 @@ export default function MapView({
             if (label) setPopup({ lng: animPos[0], lat: animPos[1], title: label });
           }}
         >
-          <div
-            style={{
-              position: 'relative', width: 38, height: 38,
-              transform: `rotate(${heading ?? 0}deg)`,
-              transition: 'transform .6s ease',
-              cursor: 'pointer',
-            }}
-          >
-            {/* Yön oku (ilk konum gelene dek gizli) */}
-            {heading != null && (
-              <div
-                style={{
-                  position: 'absolute', top: -6, left: '50%', marginLeft: -7,
-                  width: 0, height: 0,
-                  borderLeft: '7px solid transparent',
-                  borderRight: '7px solid transparent',
-                  borderBottom: '10px solid #2563eb',
-                  filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.3))',
-                }}
-              />
-            )}
-            <div
-              style={{
-                position: 'absolute', inset: 4,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%',
-                background: '#2563eb', border: '3px solid white',
-                boxShadow: '0 1px 5px rgba(0,0,0,.5)', fontSize: 15,
-              }}
-            >
-              {/* Kapsayıcı yöne dönerken emoji dik kalsın */}
-              <span
-                style={{
-                  display: 'inline-block',
-                  transform: `rotate(${-(heading ?? 0)}deg)`,
-                  transition: 'transform .6s ease',
-                }}
-              >
-                🚛
-              </span>
-            </div>
-          </div>
+          <TruckIcon heading={heading} />
         </Marker>
       )}
 
@@ -787,16 +762,27 @@ export default function MapView({
               });
             }}
           >
-            <div
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 22, height: 22, borderRadius: '50%', fontSize: 11,
-                background: isStart ? '#059669' : '#dc2626',
-                border: '3px solid white', color: 'white', fontWeight: 700,
-                boxShadow: '0 1px 5px rgba(0,0,0,.5)', cursor: 'pointer',
-              }}
-            >
-              {isStart ? 'B' : 'V'}
+            <div style={{ position: 'relative', width: 22, height: 22, cursor: 'pointer' }}>
+              {/* Başlangıç/bitiş noktaları haritada nabız gibi atarak dikkat çeker */}
+              <span
+                className="cop-pulse-ring"
+                style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: isStart ? '#059669' : '#dc2626', pointerEvents: 'none',
+                }}
+              />
+              <span
+                style={{
+                  position: 'absolute', inset: 0, boxSizing: 'border-box',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '50%', fontSize: 11,
+                  background: isStart ? '#059669' : '#dc2626',
+                  border: '3px solid white', color: 'white', fontWeight: 700,
+                  boxShadow: '0 1px 5px rgba(0,0,0,.5)',
+                }}
+              >
+                {isStart ? 'B' : 'V'}
+              </span>
             </div>
           </Marker>
         );
@@ -906,6 +892,16 @@ export default function MapView({
         </Popup>
       )}
 
+      {/* Geçmiş modda güzergah oynatıcı (kamyon animasyonu + kumanda çubuğu).
+          key: yeni bir gün/filtre yüklendiğinde oynatma baştan başlasın. */}
+      {isHistory && route.length > 1 && (
+        <RoutePlayback
+          key={`${route.length}-${route[0].t}-${route[route.length - 1].t}`}
+          points={route}
+          onActiveChange={setPlaybackOn}
+        />
+      )}
+
       {/* Canlı modda araç takibi; geçmiş modda rotaya sığdır */}
       {isHistory ? (
         <FitBounds positions={route} />
@@ -919,14 +915,342 @@ export default function MapView({
   );
 }
 
-function EndpointDot({ color }: { color: string }) {
+/**
+ * Nabız atan nokta imleci — geçmiş modda güzergahın başlangıç/bitiş uçlarını
+ * belirginleştirir. Halka animasyonu globals.css'teki `cop-pulse` ile çalışır
+ * ("hareketi azalt" tercihi açıksa kendiliğinden kapanır).
+ */
+function EndpointDot({ color, pulse = true }: { color: string; pulse?: boolean }) {
+  return (
+    <div style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer' }}>
+      {pulse && (
+        <span
+          className="cop-pulse-ring"
+          style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: color, pointerEvents: 'none',
+          }}
+        />
+      )}
+      <span
+        style={{
+          position: 'absolute', inset: 0, boxSizing: 'border-box',
+          borderRadius: '50%', background: color, border: '3px solid white',
+          boxShadow: '0 1px 5px rgba(0,0,0,.5)',
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * Yönüne dönen kamyon imleci — canlı takip ve geçmiş rota oynatmada ortaktır.
+ *
+ * Oynatmada konum ve yön her karede değiştiği için `smooth` kapatılır; yoksa
+ * CSS geçişi imleci kendi hareketinin gerisinde bırakır.
+ */
+function TruckIcon({
+  heading,
+  color = '#2563eb',
+  smooth = true,
+}: {
+  heading: number | null;
+  color?: string;
+  smooth?: boolean;
+}) {
+  const spin = smooth ? 'transform .6s ease' : 'none';
   return (
     <div
       style={{
-        width: 16, height: 16, borderRadius: '50%',
-        background: color, border: '3px solid white',
-        boxShadow: '0 1px 5px rgba(0,0,0,.5)', cursor: 'pointer',
+        position: 'relative', width: 38, height: 38,
+        transform: `rotate(${heading ?? 0}deg)`,
+        transition: spin,
+        cursor: 'pointer',
       }}
-    />
+    >
+      {/* Yön oku (ilk konum gelene dek gizli) */}
+      {heading != null && (
+        <div
+          style={{
+            position: 'absolute', top: -6, left: '50%', marginLeft: -7,
+            width: 0, height: 0,
+            borderLeft: '7px solid transparent',
+            borderRight: '7px solid transparent',
+            borderBottom: `10px solid ${color}`,
+            filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.3))',
+          }}
+        />
+      )}
+      <div
+        style={{
+          position: 'absolute', inset: 4,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '50%',
+          background: color, border: '3px solid white',
+          boxShadow: '0 1px 5px rgba(0,0,0,.5)', fontSize: 15,
+        }}
+      >
+        {/* Kapsayıcı yöne dönerken emoji dik kalsın */}
+        <span
+          style={{
+            display: 'inline-block',
+            transform: `rotate(${-(heading ?? 0)}deg)`,
+            transition: spin,
+          }}
+        >
+          🚛
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Kumanda çubuğundaki yuvarlak düğme. */
+function PlayerButton({
+  onClick,
+  title,
+  active = false,
+  disabled = false,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  active?: boolean;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 26, height: 26, flexShrink: 0,
+        borderRadius: '50%', border: 'none',
+        background: active ? '#ede9fe' : 'transparent',
+        color: disabled ? '#d4d4d8' : active ? PLAYBACK_COLOR : '#3f3f46',
+        fontSize: 12, lineHeight: 1,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Geçmiş güzergahı "video" gibi oynatır: kamyon imleci rotayı baştan sona kat
+ * ederken geçtiği yol mor çizgiyle üzerine boyanır.
+ *
+ * Kare başına state güncellendiği için bilerek ayrı bir bileşendir — böylece
+ * MapView (rota GeoJSON'u, geofence çemberleri, POI markerları) 60 fps yeniden
+ * render edilmez.
+ */
+function RoutePlayback({
+  points,
+  onActiveChange,
+}: {
+  points: TrackPoint[];
+  onActiveChange: (active: boolean) => void;
+}) {
+  const { current: mapRef } = useMap();
+  const map = mapRef?.getMap() as unknown as MapLibreMap | undefined;
+  const track = useMemo(() => buildPlaybackTrack(points), [points]);
+
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..1
+  const [speed, setSpeed] = useState<number>(1);
+  const [follow, setFollow] = useState(false);
+  // rAF döngüsü state güncellemesini beklemeden ilerleyebilsin diye ayna ref.
+  const progressRef = useRef(0);
+
+  function seek(p: number) {
+    progressRef.current = p;
+    setProgress(p);
+  }
+
+  // Oynatma döngüsü. Hız değişince yeniden kurulur ve kaldığı yerden devam eder.
+  useEffect(() => {
+    if (!playing) return;
+    const durationMs = PLAYBACK_BASE_MS / speed;
+    let raf = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const next = Math.min(progressRef.current + (now - last) / durationMs, 1);
+      last = now;
+      progressRef.current = next;
+      setProgress(next);
+      if (next < 1) raf = requestAnimationFrame(step);
+      else setPlaying(false); // sona gelindi
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, speed]);
+
+  // Oynatma başlayınca alttaki ham güzergah soluklaşsın (boyama MapView'da).
+  const active = playing || progress > 0;
+  useEffect(() => {
+    onActiveChange(active);
+  }, [active, onActiveChange]);
+
+  const frame = playbackFrameAt(track, progress * track.total);
+  const frameLng = frame?.lon;
+  const frameLat = frame?.lat;
+
+  // Takip modu: kamera her karede araca kilitlenir. Programatik bir geçiş
+  // (easeTo) sürerken araya girilmez, yoksa geçiş iptal olur.
+  useEffect(() => {
+    if (!map || !follow || frameLng == null || frameLat == null) return;
+    if (map.isEasing()) return;
+    map.setCenter([frameLng, frameLat]);
+  }, [map, follow, frameLng, frameLat]);
+
+  function togglePlay() {
+    if (!playing && progressRef.current >= 1) seek(0); // sondayken baştan başlat
+    setPlaying((v) => !v);
+  }
+
+  function toggleFollow() {
+    const next = !follow;
+    setFollow(next);
+    if (next && map && frame) {
+      map.easeTo({
+        center: [frame.lon, frame.lat],
+        zoom: Math.max(map.getZoom(), 16),
+        duration: 500,
+      });
+    }
+  }
+
+  function cycleSpeed() {
+    const i = PLAYBACK_SPEEDS.indexOf(speed as (typeof PLAYBACK_SPEEDS)[number]);
+    setSpeed(PLAYBACK_SPEEDS[(i + 1) % PLAYBACK_SPEEDS.length]);
+  }
+
+  // Geçilen güzergah: tamamlanan noktalar + ara değerlenmiş anlık konum.
+  // Ham rotayla aynı görünsün diye o da Chaikin ile yumuşatılır.
+  const traveled: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
+    type: 'FeatureCollection',
+    features: frame
+      ? [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: chaikinSmooth([
+                ...points.slice(0, frame.index + 1).map(toLngLat),
+                [frame.lon, frame.lat],
+              ]),
+            },
+          },
+        ]
+      : [],
+  };
+
+  return (
+    <>
+      {/* Geçilen yol — ham güzergahın üstünde parlak mor iz */}
+      <Source id="playback-trail" type="geojson" data={traveled}>
+        <Layer
+          id="playback-trail-glow"
+          type="line"
+          layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+          paint={{
+            'line-color': PLAYBACK_COLOR,
+            'line-width': 13,
+            'line-opacity': 0.2,
+            'line-blur': 6,
+          }}
+        />
+        <Layer
+          id="playback-trail-line"
+          type="line"
+          layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+          paint={{ 'line-color': PLAYBACK_COLOR, 'line-width': 5 }}
+        />
+      </Source>
+
+      {/* Oynatılan andaki kamyon */}
+      {frame && (
+        <Marker longitude={frame.lon} latitude={frame.lat} anchor="center">
+          <TruckIcon heading={frame.heading} color={PLAYBACK_COLOR} smooth={false} />
+        </Marker>
+      )}
+
+      {/* Kumanda çubuğu — harita konteynerinin altına sabitlenir */}
+      <div
+        style={{
+          position: 'absolute', left: 10, right: 10, bottom: 28, zIndex: 1,
+          display: 'flex', alignItems: 'center', gap: 8,
+          maxWidth: 560, margin: '0 auto',
+          padding: '6px 10px', borderRadius: 999,
+          background: 'rgba(255,255,255,.96)',
+          boxShadow: '0 2px 10px rgba(0,0,0,.22)',
+          fontSize: 11, color: '#3f3f46',
+        }}
+      >
+        <PlayerButton
+          onClick={togglePlay}
+          title={playing ? 'Duraklat' : 'Güzergahı oynat'}
+          active={playing}
+        >
+          {playing ? '❚❚' : '▶'}
+        </PlayerButton>
+        <PlayerButton
+          onClick={() => {
+            setPlaying(false);
+            seek(0);
+          }}
+          title="Başa sar"
+          disabled={!active}
+        >
+          ↺
+        </PlayerButton>
+
+        <input
+          type="range"
+          min={0}
+          max={1000}
+          value={Math.round(progress * 1000)}
+          aria-label="Güzergah ilerlemesi"
+          onChange={(e) => seek(Number(e.target.value) / 1000)}
+          style={{ flex: 1, minWidth: 60, accentColor: PLAYBACK_COLOR, cursor: 'pointer' }}
+        />
+
+        <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          {frame ? formatTime(frame.point.t) : '—'}
+        </span>
+        {frame?.point.speed != null && (
+          <span style={{ color: '#71717a', whiteSpace: 'nowrap' }}>
+            {Math.round(Number(frame.point.speed))} km/s
+          </span>
+        )}
+
+        <button
+          type="button"
+          title="Oynatma hızı"
+          onClick={cycleSpeed}
+          style={{
+            flexShrink: 0, padding: '2px 7px', borderRadius: 999,
+            border: '1px solid #e4e4e7', background: 'white',
+            fontSize: 11, fontWeight: 600, color: '#3f3f46', cursor: 'pointer',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {speed}×
+        </button>
+        <PlayerButton
+          onClick={toggleFollow}
+          title={follow ? 'Kamera takibini bırak' : 'Kamerayı araca kilitle'}
+          active={follow}
+        >
+          ◎
+        </PlayerButton>
+      </div>
+    </>
   );
 }

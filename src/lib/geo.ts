@@ -141,3 +141,108 @@ export function nearestPoint(
   }
   return best;
 }
+
+// ─── Rota oynatma (playback) ────────────────────────────────────────────────
+// Geçmiş izi "video" gibi oynatmak için noktaları sanal bir zaman eksenine oturtur.
+
+/** İki nokta arasındaki sanal süre bu değeri aşamaz (saniye). */
+const MAX_GAP_S = 30;
+
+/** Zaman eksenine oturtulmuş iz — `playbackFrameAt` ile örneklenir. */
+export interface PlaybackTrack {
+  points: TrackPoint[];
+  /** points[i]'ye kadar biriken sanal süre (saniye); offsets[0] her zaman 0. */
+  offsets: number[];
+  /** Toplam sanal süre (saniye). */
+  total: number;
+}
+
+/**
+ * Noktaların zaman damgalarından sanal zaman ekseni kurar.
+ *
+ * Gerçek süreler kullanılır (araç yavaşken animasyon da yavaşlar), ancak uzun
+ * duraklamalar `MAX_GAP_S` ile kırpılır; yoksa 40 dakika bekleyen bir kamyon
+ * oynatmanın yarısını hareketsiz geçirirdi. Zaman damgaları kullanılamazsa
+ * noktalar eşit aralıklı varsayılır.
+ */
+export function buildPlaybackTrack(points: TrackPoint[]): PlaybackTrack {
+  const offsets = new Array<number>(points.length).fill(0);
+  let acc = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dt = (Date.parse(points[i].t) - Date.parse(points[i - 1].t)) / 1000;
+    acc += Number.isFinite(dt) ? Math.min(Math.max(dt, 0), MAX_GAP_S) : 1;
+    offsets[i] = acc;
+  }
+  if (acc === 0 && points.length > 1) {
+    for (let i = 0; i < points.length; i++) offsets[i] = i;
+    acc = points.length - 1;
+  }
+  return { points, offsets, total: acc };
+}
+
+/** Kuzey = 0°, saat yönünde artan gidiş yönü (kısa mesafede düzlem yaklaşımı). */
+export function bearingDeg(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number | null {
+  const dLat = lat2 - lat1;
+  const dLon = (lon2 - lon1) * Math.cos(((lat1 + lat2) / 2) * RAD);
+  if (dLat === 0 && dLon === 0) return null; // araç duruyor — çağıran son yönü korur
+  return (Math.atan2(dLon, dLat) * 180) / Math.PI;
+}
+
+/** Oynatmanın tek bir anı: araç konumu, yönü ve o ana kadar geçilen nokta sayısı. */
+export interface PlaybackFrame {
+  lat: number;
+  lon: number;
+  /** Araç duruyorsa null — çağıran önceki yönü korumalı. */
+  heading: number | null;
+  /** Tamamen geçilmiş son noktanın indeksi (geçilen iz dilimi = slice(0, index + 1)). */
+  index: number;
+  /** O ana en yakın ham nokta — saat/hız etiketleri için. */
+  point: TrackPoint;
+}
+
+/** Sanal zaman `vt` (saniye) anındaki araç durumunu ara değerleyerek verir. */
+export function playbackFrameAt(track: PlaybackTrack, vt: number): PlaybackFrame | null {
+  const { points, offsets, total } = track;
+  if (points.length === 0) return null;
+  const first = points[0];
+  if (points.length === 1) {
+    return { lat: first.lat, lon: first.lon, heading: null, index: 0, point: first };
+  }
+
+  const clamped = Math.min(Math.max(vt, 0), total);
+  // offsets artan sıradadır: offsets[i] <= clamped olan en büyük i.
+  let lo = 0;
+  let hi = points.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (offsets[mid] <= clamped) lo = mid;
+    else hi = mid - 1;
+  }
+  const i = Math.min(lo, points.length - 2);
+  const a = points[i];
+  const b = points[i + 1];
+  const span = offsets[i + 1] - offsets[i];
+  const f = span > 0 ? (clamped - offsets[i]) / span : 0;
+
+  // Araç duruyorken (a === b) yön hesaplanamaz; imleç kuzeye dönmesin diye
+  // geriye doğru ilk anlamlı parçanın yönü kullanılır.
+  let heading: number | null = null;
+  for (let j = i; j >= 0 && heading === null; j--) {
+    const from = points[j];
+    const to = points[j + 1];
+    heading = bearingDeg(from.lat, from.lon, to.lat, to.lon);
+  }
+
+  return {
+    lat: a.lat + (b.lat - a.lat) * f,
+    lon: a.lon + (b.lon - a.lon) * f,
+    heading,
+    index: i,
+    point: f < 0.5 ? a : b,
+  };
+}

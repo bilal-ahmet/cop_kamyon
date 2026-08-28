@@ -383,8 +383,13 @@ export default function LiveVehicleMap({
               Dönüş güzergahı {formatKm(dist.return)}
             </span>
           )}
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-5 bg-violet-600" />
+            Oynatmada geçilen yol
+          </span>
           <span className="text-zinc-400">
-            ▲ oklar gidiş yönünü gösterir · izin üzerine gelince saat bilgisi çıkar
+            ▲ oklar gidiş yönünü gösterir · izin üzerine gelince saat bilgisi çıkar ·
+            haritanın altındaki ▶ düğmesi güzergahı baştan sona canlandırır
           </span>
           {!endLoc && (
             <span className="text-amber-600">
