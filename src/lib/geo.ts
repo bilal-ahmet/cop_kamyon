@@ -143,41 +143,70 @@ export function nearestPoint(
 }
 
 // ─── Rota oynatma (playback) ────────────────────────────────────────────────
-// Geçmiş izi "video" gibi oynatmak için noktaları sanal bir zaman eksenine oturtur.
+// Geçmiş izi "video" gibi oynatmak için noktaları **mesafe** eksenine oturtur.
 
-/** İki nokta arasındaki sanal süre bu değeri aşamaz (saniye). */
-const MAX_GAP_S = 30;
-
-/** Zaman eksenine oturtulmuş iz — `playbackFrameAt` ile örneklenir. */
+/** Yol ekseni üzerine dizilmiş iz — `playbackFrameAt` ile örneklenir. */
 export interface PlaybackTrack {
+  /** Chaikin ile yumuşatılmış noktalar — haritada çizilen çizginin ta kendisi. */
   points: TrackPoint[];
-  /** points[i]'ye kadar biriken sanal süre (saniye); offsets[0] her zaman 0. */
+  /** points[i]'ye kadar biriken yol (metre); offsets[0] her zaman 0. */
   offsets: number[];
-  /** Toplam sanal süre (saniye). */
+  /** Toplam yol (metre). */
   total: number;
 }
 
 /**
- * Noktaların zaman damgalarından sanal zaman ekseni kurar.
+ * Chaikin köşe kesmeyi iz noktalarına uygular; her yeni nokta, türediği iki
+ * komşudan kendisine daha yakın olanın zaman/hız/bacak bilgisini devralır.
  *
- * Gerçek süreler kullanılır (araç yavaşken animasyon da yavaşlar), ancak uzun
- * duraklamalar `MAX_GAP_S` ile kırpılır; yoksa 40 dakika bekleyen bir kamyon
- * oynatmanın yarısını hareketsiz geçirirdi. Zaman damgaları kullanılamazsa
- * noktalar eşit aralıklı varsayılır.
+ * `chaikinSmooth` ile aynı geometriyi üretir, farkı meta veriyi korumasıdır —
+ * oynatma imleci tam olarak ekranda çizilen çizgi üzerinde ilerleyebilsin diye.
+ */
+export function chaikinSmoothTrack(points: TrackPoint[], iterations = 2): TrackPoint[] {
+  let pts = points;
+  for (let iter = 0; iter < iterations; iter++) {
+    if (pts.length < 3) return pts;
+    const out: TrackPoint[] = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      out.push({ ...a, lat: a.lat * 0.75 + b.lat * 0.25, lon: a.lon * 0.75 + b.lon * 0.25 });
+      out.push({ ...b, lat: a.lat * 0.25 + b.lat * 0.75, lon: a.lon * 0.25 + b.lon * 0.75 });
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
+
+/**
+ * Oynatma eksenini kat edilen yoldan kurar (zamandan değil).
+ *
+ * Bilerek sabit hız: araç gerçekte durduğunda animasyon da dursaydı, uzun
+ * bekleme ve rölanti kayıtları oynatmayı sürekli takılıyormuş gibi gösterirdi.
+ * Mesafe ekseninde ardışık aynı konumlar sıfır uzunlukta kalır, yani duruşlar
+ * kendiliğinden atlanır ve imleç baştan sona kesintisiz akar.
+ *
+ * Noktalar önce yumuşatılır: imleç hem çizilen çizgiyi birebir takip eder hem de
+ * köşelerde sıçramadan, kademeli döner.
  */
 export function buildPlaybackTrack(points: TrackPoint[]): PlaybackTrack {
-  const offsets = new Array<number>(points.length).fill(0);
+  const smooth = chaikinSmoothTrack(points);
+  const offsets = new Array<number>(smooth.length).fill(0);
   let acc = 0;
-  for (let i = 1; i < points.length; i++) {
-    const dt = (Date.parse(points[i].t) - Date.parse(points[i - 1].t)) / 1000;
-    acc += Number.isFinite(dt) ? Math.min(Math.max(dt, 0), MAX_GAP_S) : 1;
+  for (let i = 1; i < smooth.length; i++) {
+    const a = smooth[i - 1];
+    const b = smooth[i];
+    acc += haversineMeters(a.lat, a.lon, b.lat, b.lon);
     offsets[i] = acc;
   }
-  if (acc === 0 && points.length > 1) {
-    for (let i = 0; i < points.length; i++) offsets[i] = i;
-    acc = points.length - 1;
+  // Tüm noktalar aynı yerdeyse (araç hiç kıpırdamamış) mesafe ekseni çöker;
+  // oynatma yine de baştan sona ilerlesin diye eşit aralığa düşülür.
+  if (acc === 0 && smooth.length > 1) {
+    for (let i = 0; i < smooth.length; i++) offsets[i] = i;
+    acc = smooth.length - 1;
   }
-  return { points, offsets, total: acc };
+  return { points: smooth, offsets, total: acc };
 }
 
 /** Kuzey = 0°, saat yönünde artan gidiş yönü (kısa mesafede düzlem yaklaşımı). */
@@ -197,16 +226,19 @@ export function bearingDeg(
 export interface PlaybackFrame {
   lat: number;
   lon: number;
-  /** Araç duruyorsa null — çağıran önceki yönü korumalı. */
+  /** Yön hiç hesaplanamadıysa null (tüm noktalar üst üste) — imleç düz durur. */
   heading: number | null;
-  /** Tamamen geçilmiş son noktanın indeksi (geçilen iz dilimi = slice(0, index + 1)). */
+  /**
+   * Tamamen geçilmiş son noktanın indeksi — `track.points` dizisine göredir,
+   * geçilen iz dilimi `track.points.slice(0, index + 1)` olur.
+   */
   index: number;
-  /** O ana en yakın ham nokta — saat/hız etiketleri için. */
+  /** O ana en yakın nokta — saat/hız etiketleri için. */
   point: TrackPoint;
 }
 
-/** Sanal zaman `vt` (saniye) anındaki araç durumunu ara değerleyerek verir. */
-export function playbackFrameAt(track: PlaybackTrack, vt: number): PlaybackFrame | null {
+/** `d` metre yol kat edilmişken araç durumunu ara değerleyerek verir. */
+export function playbackFrameAt(track: PlaybackTrack, d: number): PlaybackFrame | null {
   const { points, offsets, total } = track;
   if (points.length === 0) return null;
   const first = points[0];
@@ -214,7 +246,7 @@ export function playbackFrameAt(track: PlaybackTrack, vt: number): PlaybackFrame
     return { lat: first.lat, lon: first.lon, heading: null, index: 0, point: first };
   }
 
-  const clamped = Math.min(Math.max(vt, 0), total);
+  const clamped = Math.min(Math.max(d, 0), total);
   // offsets artan sıradadır: offsets[i] <= clamped olan en büyük i.
   let lo = 0;
   let hi = points.length - 1;

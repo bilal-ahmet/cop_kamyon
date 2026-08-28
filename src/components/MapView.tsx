@@ -946,19 +946,21 @@ function EndpointDot({ color, pulse = true }: { color: string; pulse?: boolean }
 /**
  * Yönüne dönen kamyon imleci — canlı takip ve geçmiş rota oynatmada ortaktır.
  *
- * Oynatmada konum ve yön her karede değiştiği için `smooth` kapatılır; yoksa
- * CSS geçişi imleci kendi hareketinin gerisinde bırakır.
+ * Geçiş yalnızca dönüşü yumuşatır: konumu Marker taşıdığı için buradaki
+ * transform sadece rotasyondur, dolayısıyla imleç kendi hareketinin gerisinde
+ * kalmaz. Canlıda konumlar 5 sn arayla geldiğinden uzun (600 ms), oynatmada her
+ * karede güncellendiğinden kısa (200 ms) bir süre kullanılır.
  */
 function TruckIcon({
   heading,
   color = '#2563eb',
-  smooth = true,
+  turnMs = 600,
 }: {
   heading: number | null;
   color?: string;
-  smooth?: boolean;
+  turnMs?: number;
 }) {
-  const spin = smooth ? 'transform .6s ease' : 'none';
+  const spin = `transform ${turnMs}ms ease-out`;
   return (
     <div
       style={{
@@ -1059,6 +1061,8 @@ function RoutePlayback({
   const { current: mapRef } = useMap();
   const map = mapRef?.getMap() as unknown as MapLibreMap | undefined;
   const track = useMemo(() => buildPlaybackTrack(points), [points]);
+  // Geçilen iz her karede buradan dilimlenir; koordinatlar bir kez hazırlanır.
+  const coords = useMemo(() => track.points.map(toLngLat), [track]);
 
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
@@ -1096,7 +1100,7 @@ function RoutePlayback({
     onActiveChange(active);
   }, [active, onActiveChange]);
 
-  const frame = playbackFrameAt(track, progress * track.total);
+  const frame = playbackFrameAt(track, progress * track.total); // progress: kat edilen yolun oranı
   const frameLng = frame?.lon;
   const frameLat = frame?.lat;
 
@@ -1131,7 +1135,6 @@ function RoutePlayback({
   }
 
   // Geçilen güzergah: tamamlanan noktalar + ara değerlenmiş anlık konum.
-  // Ham rotayla aynı görünsün diye o da Chaikin ile yumuşatılır.
   const traveled: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
     type: 'FeatureCollection',
     features: frame
@@ -1141,10 +1144,7 @@ function RoutePlayback({
             properties: {},
             geometry: {
               type: 'LineString',
-              coordinates: chaikinSmooth([
-                ...points.slice(0, frame.index + 1).map(toLngLat),
-                [frame.lon, frame.lat],
-              ]),
+              coordinates: [...coords.slice(0, frame.index + 1), [frame.lon, frame.lat]],
             },
           },
         ]
@@ -1177,7 +1177,7 @@ function RoutePlayback({
       {/* Oynatılan andaki kamyon */}
       {frame && (
         <Marker longitude={frame.lon} latitude={frame.lat} anchor="center">
-          <TruckIcon heading={frame.heading} color={PLAYBACK_COLOR} smooth={false} />
+          <TruckIcon heading={frame.heading} color={PLAYBACK_COLOR} turnMs={200} />
         </Marker>
       )}
 
