@@ -29,6 +29,56 @@ export interface Vehicle {
   created_at: string;
   owner_username?: string;
   owner_full_name?: string | null;
+  /** Veri akışı durumu. Takip henüz bir tur atmadıysa null = "bilinmiyor". */
+  connection_online?: boolean | null;
+  connection_last_seen_at?: string | null;
+  connection_cause?: NotificationCause | null;
+}
+
+/**
+ * Bir aracın neden veri göndermediğine dair TAHMİN.
+ * Backend sessizliğin sebebini kesin bilemez (cihaz firmware'i heartbeat göndermiyor),
+ * bu yüzden her tahmin bir güven seviyesiyle birlikte gelir.
+ */
+export type NotificationCause =
+  | 'connectivity'
+  | 'power'
+  | 'sensor_config'
+  | 'system_outage'
+  | 'parked'
+  | 'unknown';
+
+export type NotificationConfidence = 'low' | 'medium' | 'high' | 'confirmed';
+
+export type NotificationType =
+  | 'vehicle_data_stale'
+  | 'vehicle_data_resumed'
+  | 'system_outage'
+  | 'system_recovered';
+
+/** Panelde gösterilen uyarı (GET /notifications satırı). */
+export interface AppNotification {
+  id: number;
+  user_id: number;
+  vehicle_id: number | null;
+  /** Backend LEFT JOIN ile ekler; araca bağlı olmayan bildirimlerde null. */
+  plate: string | null;
+  type: NotificationType;
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  message: string | null;
+  probable_cause: NotificationCause | null;
+  cause_confidence: NotificationConfidence | null;
+  metadata: {
+    plate?: string;
+    last_seen_at?: string;
+    silent_minutes?: number;
+    evidence?: string[];
+    confirmation?: string;
+  } | null;
+  is_read: boolean;
+  created_at: string;
+  read_at: string | null;
 }
 
 /** Aracın son konumu (GET /vehicles/:id/location). — Aşama 2 */

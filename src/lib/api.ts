@@ -16,6 +16,7 @@ import type {
   TelemetryGap,
   UserProfile,
   StopLocation,
+  AppNotification,
 } from './types';
 
 const BACKEND_URL = process.env.BACKEND_URL;
@@ -287,4 +288,47 @@ export async function getUsers(search?: string): Promise<UserProfile[]> {
 /** Belirli bir kullanıcının araçları (GET /vehicles?user_id=). Admin-only. */
 export async function getVehiclesForUser(userId: number): Promise<Vehicle[]> {
   return (await apiFetch<Vehicle[]>(`/vehicles?user_id=${userId}`)) ?? [];
+}
+
+/**
+ * Kullanıcının bildirimleri (GET /notifications).
+ * Bildirimler alıcı başına ayrı satır tutulduğu için burada ek bir filtre gerekmez;
+ * backend zaten yalnızca oturum sahibinin satırlarını döndürür.
+ *
+ * `allow404`: bildirim uçları henüz dağıtılmamış bir backend'e bağlanıldığında Express
+ * 404 döner. Bunu hataya çevirmek yerine null döndürüyoruz — çağıran taraf "özellik yok"
+ * ile "bildirim yok" durumlarını ayırt edebilsin.
+ */
+export async function getNotifications(
+  params: {
+    unreadOnly?: boolean;
+    type?: string;
+    cause?: string;
+    vehicleId?: number;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<AppNotification[] | null> {
+  const qs = new URLSearchParams();
+  if (params.unreadOnly) qs.set('unread_only', 'true');
+  if (params.type) qs.set('type', params.type);
+  if (params.cause) qs.set('cause', params.cause);
+  if (params.vehicleId != null) qs.set('vehicle_id', String(params.vehicleId));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+
+  return apiFetch<AppNotification[]>(`/notifications${suffix}`, { allow404: true });
+}
+
+/**
+ * Okunmamış bildirim sayısı (GET /notifications/unread-count) — zil rozeti için.
+ * Bu çağrı dashboard layout'undan yapılıyor: uç yoksa 0 döner ki eski bir backend'e
+ * bağlanıldığında panelin tamamı çökmesin.
+ */
+export async function getUnreadNotificationCount(): Promise<number> {
+  const data = await apiFetch<{ count: number }>('/notifications/unread-count', {
+    allow404: true,
+  });
+  return data?.count ?? 0;
 }
