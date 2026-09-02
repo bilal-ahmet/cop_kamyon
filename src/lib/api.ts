@@ -62,20 +62,29 @@ export async function loginRequest(
  * Oturumdaki token ile backend'e kimlik doğrulamalı istek atan ortak yardımcı.
  * 401/403 durumunda oturumu temizler ve login'e yönlendirir.
  * `allow404: true` verilirse 404'te hata fırlatmaz, null döner.
+ * `allowError: true` verilirse ağ hatası / 5xx durumunda da null döner — sayfanın
+ * tamamını düşürmemesi gereken ikincil veriler (ör. bildirim rozeti) için.
  */
 async function apiFetch<T>(
   path: string,
-  opts: { allow404?: boolean } = {},
+  opts: { allow404?: boolean; allowError?: boolean } = {},
 ): Promise<T | null> {
   const session = await getSession();
   if (!session) {
     redirect('/login');
   }
 
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    headers: { Authorization: `Bearer ${session.token}` },
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+      cache: 'no-store',
+    });
+  } catch (err) {
+    // Backend'e hiç ulaşılamadı (ağ/DNS/timeout).
+    if (opts.allowError) return null;
+    throw err;
+  }
 
   if (res.status === 401) {
     // Token süresi dolmuş/geçersiz: oturumu temizle ve giriş ekranına gönder.
@@ -92,10 +101,17 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
+    // 500 genellikle "kod dağıtıldı ama migration çalıştırılmadı" demektir.
+    if (opts.allowError) return null;
     throw new Error(`Backend hatası (${res.status}) — ${path}`);
   }
 
-  return res.json() as Promise<T>;
+  try {
+    return (await res.json()) as T;
+  } catch (err) {
+    if (opts.allowError) return null;
+    throw err;
+  }
 }
 
 /** Mutasyon (POST/PUT/DELETE) sonucu. Hata fırlatmaz; Server Action mesaj gösterebilsin diye { ok } döner. */
@@ -318,7 +334,10 @@ export async function getNotifications(
   if (params.offset) qs.set('offset', String(params.offset));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
 
-  return apiFetch<AppNotification[]>(`/notifications${suffix}`, { allow404: true });
+  return apiFetch<AppNotification[]>(`/notifications${suffix}`, {
+    allow404: true,
+    allowError: true,
+  });
 }
 
 /**
@@ -329,6 +348,7 @@ export async function getNotifications(
 export async function getUnreadNotificationCount(): Promise<number> {
   const data = await apiFetch<{ count: number }>('/notifications/unread-count', {
     allow404: true,
+    allowError: true,
   });
   return data?.count ?? 0;
 }

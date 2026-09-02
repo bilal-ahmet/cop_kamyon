@@ -22,7 +22,7 @@ export default async function NotificationsPage({
   const sp = await searchParams;
   const unreadOnly = sp.unread === '1';
 
-  // null = backend'de bildirim uçları yok (henüz dağıtılmamış). Boş dizi = bildirim yok.
+  // null = bildirimler okunamadı (uç yok ya da sunucu hata verdi). Boş dizi = bildirim yok.
   const notifications = await getNotifications({
     type: sp.type || undefined,
     unreadOnly,
@@ -34,10 +34,12 @@ export default async function NotificationsPage({
       <div className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold text-zinc-900">Bildirimler</h1>
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Bağlanılan sunucu bildirim özelliğini desteklemiyor. Backend&apos;i güncelleyip{' '}
-          <code className="rounded bg-amber-100 px-1">npm run migrate</code> çalıştırın.
-          Sunucunun desteklediği özellikleri <code className="rounded bg-amber-100 px-1">/api/health</code>{' '}
-          adresinden görebilirsiniz.
+          Bildirimler şu anda okunamıyor. En sık sebebi, backend kodunun dağıtılmış ama
+          veritabanı migrasyonunun çalıştırılmamış olmasıdır — bu durumda bildirim tabloları
+          henüz yoktur. <code className="rounded bg-amber-100 px-1">/api/health</code> adresindeki{' '}
+          <code className="rounded bg-amber-100 px-1">migrationsApplied</code> alanını kontrol edin;
+          <code className="rounded bg-amber-100 px-1">false</code> ise sunucuda{' '}
+          <code className="rounded bg-amber-100 px-1">npm run migrate</code> çalıştırılmalı.
         </p>
       </div>
     );
