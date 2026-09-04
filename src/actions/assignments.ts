@@ -3,13 +3,25 @@
 import { revalidatePath } from 'next/cache';
 import { apiMutate } from '@/lib/api';
 import type { VehicleAssignment } from '@/lib/types';
-import { type ActionState, strOrNull } from './_shared';
+import { type ActionState, strOrNull, actingUserFrom } from './_shared';
+
+/**
+ * Tanım listesi hem Şoför-Araç Tanımlama sayfasında hem şoför sayfasında etkili.
+ * Admin bir müşteri adına çalışıyorsa o müşterinin çalışma alanı da tazelenir.
+ */
+function revalidateAssignment(actingUserId?: number) {
+  revalidatePath('/dashboard/atamalar');
+  if (actingUserId) {
+    revalidatePath(`/dashboard/users/${actingUserId}/atamalar`);
+  }
+}
 
 /** Sürücüyü araca atar (POST /assignments). */
 export async function createAssignment(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const vehicle_id = Number(formData.get('vehicle_id'));
   const driver_id = Number(formData.get('driver_id'));
   if (!vehicle_id || !driver_id) {
@@ -23,10 +35,10 @@ export async function createAssignment(
     notes: strOrNull(formData.get('notes')),
   };
 
-  const res = await apiMutate<VehicleAssignment>('/assignments', 'POST', body);
+  const res = await apiMutate<VehicleAssignment>('/assignments', 'POST', body, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/atamalar');
+  revalidateAssignment(actingUserId);
   return { ok: true };
 }
 
@@ -35,16 +47,19 @@ export async function updateAssignment(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   const body = {
     released_date: strOrNull(formData.get('released_date')),
     notes: strOrNull(formData.get('notes')),
   };
 
-  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}`, 'PUT', body);
+  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}`, 'PUT', body, {
+    actingUserId,
+  });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/atamalar');
+  revalidateAssignment(actingUserId);
   return { ok: true };
 }
 
@@ -53,13 +68,16 @@ export async function endAssignment(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   if (!id) return { error: 'Geçersiz kayıt.' };
 
-  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}/end`, 'POST');
+  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}/end`, 'POST', undefined, {
+    actingUserId,
+  });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/atamalar');
+  revalidateAssignment(actingUserId);
   return { ok: true };
 }
 
@@ -71,15 +89,19 @@ export async function reopenAssignment(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   if (!id) return { error: 'Geçersiz kayıt.' };
 
-  const res = await apiMutate<VehicleAssignment>(`/assignments/${id}`, 'PUT', {
-    released_date: null,
-  });
+  const res = await apiMutate<VehicleAssignment>(
+    `/assignments/${id}`,
+    'PUT',
+    { released_date: null },
+    { actingUserId },
+  );
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/atamalar');
+  revalidateAssignment(actingUserId);
   return { ok: true };
 }
 
@@ -88,12 +110,13 @@ export async function deleteAssignment(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   if (!id) return { error: 'Geçersiz kayıt.' };
 
-  const res = await apiMutate(`/assignments/${id}`, 'DELETE');
+  const res = await apiMutate(`/assignments/${id}`, 'DELETE', undefined, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/atamalar');
+  revalidateAssignment(actingUserId);
   return { ok: true };
 }

@@ -2,13 +2,23 @@
 
 import Modal from '../Modal';
 import ActionForm from '../ActionForm';
+import ActingUserField from '../ActingUserField';
 import { TextField } from '../fields';
 import { createVehicle, updateVehicle } from '@/actions/vehicles';
 import { primaryBtn, secondaryBtn } from '../formStyles';
 import type { Vehicle } from '@/lib/types';
 
-/** Araç oluşturma/düzenleme modalı. vehicle verilirse düzenleme modunda çalışır. */
-export default function VehicleFormModal({ vehicle }: { vehicle?: Vehicle }) {
+/**
+ * Araç oluşturma/düzenleme modalı. vehicle verilirse düzenleme modunda çalışır.
+ * actingUserId verilirse (admin müşteri çalışma alanı) araç o müşteriye kaydedilir.
+ */
+export default function VehicleFormModal({
+  vehicle,
+  actingUserId,
+}: {
+  vehicle?: Vehicle;
+  actingUserId?: number;
+}) {
   const editing = Boolean(vehicle);
 
   return (
@@ -23,6 +33,7 @@ export default function VehicleFormModal({ vehicle }: { vehicle?: Vehicle }) {
           submitLabel={editing ? 'Kaydet' : 'Oluştur'}
           onSuccess={close}
         >
+          <ActingUserField userId={actingUserId} />
           {editing && <input type="hidden" name="id" value={vehicle!.id} />}
           <TextField label="Plaka *" name="plate" defaultValue={vehicle?.plate} required />
           <TextField label="Marka" name="brand" defaultValue={vehicle?.brand} />

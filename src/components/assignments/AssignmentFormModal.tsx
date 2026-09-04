@@ -2,6 +2,7 @@
 
 import Modal from '../Modal';
 import ActionForm from '../ActionForm';
+import ActingUserField from '../ActingUserField';
 import { TextField, SelectField, TextareaField } from '../fields';
 import { createAssignment } from '@/actions/assignments';
 import { primaryBtn } from '../formStyles';
@@ -12,9 +13,12 @@ import type { Vehicle, Driver } from '@/lib/types';
 export default function AssignmentFormModal({
   vehicles,
   drivers,
+  actingUserId,
 }: {
   vehicles: Vehicle[];
   drivers: Driver[];
+  /** Admin müşteri çalışma alanı: tanım bu müşterinin araç/şoförleri arasında kurulur. */
+  actingUserId?: number;
 }) {
   const today = lastNDates(1)[0];
 
@@ -22,6 +26,7 @@ export default function AssignmentFormModal({
     <Modal triggerLabel="+ Yeni Tanım" triggerClassName={primaryBtn} title="Yeni Şoför-Araç Tanımı">
       {(close) => (
         <ActionForm action={createAssignment} submitLabel="Tanımla" onSuccess={close}>
+          <ActingUserField userId={actingUserId} />
           {/* Gösterim sırası her yerde şoför → araç */}
           <SelectField label="Şoför *" name="driver_id" required>
             <option value="">Seçiniz…</option>

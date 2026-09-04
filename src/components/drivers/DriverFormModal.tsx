@@ -2,13 +2,23 @@
 
 import Modal from '../Modal';
 import ActionForm from '../ActionForm';
+import ActingUserField from '../ActingUserField';
 import { TextField } from '../fields';
 import { createDriver, updateDriver } from '@/actions/drivers';
 import { primaryBtn, secondaryBtn } from '../formStyles';
 import type { Driver } from '@/lib/types';
 
-/** Sürücü ekleme/düzenleme modalı. */
-export default function DriverFormModal({ driver }: { driver?: Driver }) {
+/**
+ * Sürücü ekleme/düzenleme modalı.
+ * actingUserId verilirse (admin müşteri çalışma alanı) şoför o müşteriye kaydedilir.
+ */
+export default function DriverFormModal({
+  driver,
+  actingUserId,
+}: {
+  driver?: Driver;
+  actingUserId?: number;
+}) {
   const editing = Boolean(driver);
 
   return (
@@ -23,6 +33,7 @@ export default function DriverFormModal({ driver }: { driver?: Driver }) {
           submitLabel={editing ? 'Kaydet' : 'Ekle'}
           onSuccess={close}
         >
+          <ActingUserField userId={actingUserId} />
           {editing && <input type="hidden" name="id" value={driver!.id} />}
           <TextField label="Ad soyad *" name="full_name" defaultValue={driver?.full_name} required />
           <TextField label="Ehliyet no" name="license_no" defaultValue={driver?.license_no} />

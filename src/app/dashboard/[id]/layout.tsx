@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getVehicleById } from '@/lib/api';
+import { getSession } from '@/lib/session';
 import TabNav from '@/components/TabNav';
 import VehicleFormModal from '@/components/vehicles/VehicleFormModal';
 import ConfirmButton from '@/components/ConfirmButton';
@@ -14,13 +15,20 @@ export default async function VehicleLayout({
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const [session, { id }] = await Promise.all([getSession(), params]);
   const vehicleId = Number(id);
   if (!Number.isInteger(vehicleId)) notFound();
 
   // Aracı getirir ve sahipliği doğrular (kullanıcının listesinde yoksa null → 404).
   const vehicle = await getVehicleById(vehicleId);
   if (!vehicle) notFound();
+
+  // Admin bir müşterinin aracına bakıyorsa geri linki ve düzenleme/silme
+  // işlemleri o müşterinin çalışma alanına bağlanır. Hedef, aracın kendi
+  // user_id'sinden okunur — ayrıca taşınan bir durum yok.
+  const actingUserId = session?.user.role === 'admin' ? vehicle.user_id : undefined;
+  const backHref = actingUserId ? `/dashboard/users/${actingUserId}` : '/dashboard';
+  const ownerName = vehicle.owner_full_name ?? vehicle.owner_username;
 
   const subtitle = [vehicle.brand, vehicle.model, vehicle.vehicle_type]
     .filter(Boolean)
@@ -29,8 +37,8 @@ export default async function VehicleLayout({
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-800">
-          ← Araçlara dön
+        <Link href={backHref} className="text-sm text-zinc-500 hover:text-zinc-800">
+          ← {actingUserId && ownerName ? `${ownerName} araçlarına dön` : 'Araçlara dön'}
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -38,10 +46,14 @@ export default async function VehicleLayout({
             {subtitle && <p className="text-sm text-zinc-500">{subtitle}</p>}
           </div>
           <div className="flex items-center gap-2">
-            <VehicleFormModal vehicle={vehicle} />
+            <VehicleFormModal vehicle={vehicle} actingUserId={actingUserId} />
             <ConfirmButton
               action={deleteVehicle}
-              hidden={{ id: vehicle.id }}
+              hidden={
+                actingUserId
+                  ? { id: vehicle.id, acting_user_id: actingUserId }
+                  : { id: vehicle.id }
+              }
               label="Sil"
               confirmText={`${vehicle.plate} aracını devre dışı bırakmak istediğinize emin misiniz?`}
               className={dangerBtn}

@@ -2,17 +2,25 @@
 
 import Modal from '../Modal';
 import ActionForm from '../ActionForm';
+import ActingUserField from '../ActingUserField';
 import { TextField, TextareaField } from '../fields';
 import { updateAssignment } from '@/actions/assignments';
 import { secondaryBtn } from '../formStyles';
 import type { VehicleAssignment } from '@/lib/types';
 
 /** Şoför-araç tanımı düzenleme modalı — serbest bırakma tarihi ve not. */
-export default function AssignmentEditModal({ assignment }: { assignment: VehicleAssignment }) {
+export default function AssignmentEditModal({
+  assignment,
+  actingUserId,
+}: {
+  assignment: VehicleAssignment;
+  actingUserId?: number;
+}) {
   return (
     <Modal triggerLabel="Düzenle" triggerClassName={secondaryBtn} title="Şoför-Araç Tanımını Düzenle">
       {(close) => (
         <ActionForm action={updateAssignment} submitLabel="Kaydet" onSuccess={close}>
+          <ActingUserField userId={actingUserId} />
           <input type="hidden" name="id" value={assignment.id} />
           <p className="text-sm text-zinc-500">
             {assignment.driver_name ?? `Şoför #${assignment.driver_id}`} →{' '}

@@ -59,6 +59,18 @@ export async function loginRequest(
 }
 
 /**
+ * Admin'in "başka bir kullanıcı adına" çalışmasını sağlayan başlık.
+ *
+ * Yetkiyi backend belirler: `X-Acting-User-Id` yalnızca token'daki rol admin ise
+ * dikkate alınır, müşterinin gönderdiği değer sessizce yok sayılır. Bu yüzden
+ * hedef kullanıcıyı formdan/URL'den taşımak güvenlidir — burada ikinci bir rol
+ * kontrolü yapıp yetki kararını iki yere bölmüyoruz.
+ */
+function actingUserHeader(actingUserId?: number): Record<string, string> {
+  return actingUserId != null ? { 'X-Acting-User-Id': String(actingUserId) } : {};
+}
+
+/**
  * Oturumdaki token ile backend'e kimlik doğrulamalı istek atan ortak yardımcı.
  * 401/403 durumunda oturumu temizler ve login'e yönlendirir.
  * `allow404: true` verilirse 404'te hata fırlatmaz, null döner.
@@ -67,7 +79,7 @@ export async function loginRequest(
  */
 async function apiFetch<T>(
   path: string,
-  opts: { allow404?: boolean; allowError?: boolean } = {},
+  opts: { allow404?: boolean; allowError?: boolean; actingUserId?: number } = {},
 ): Promise<T | null> {
   const session = await getSession();
   if (!session) {
@@ -77,7 +89,10 @@ async function apiFetch<T>(
   let res: Response;
   try {
     res = await fetch(`${BACKEND_URL}${path}`, {
-      headers: { Authorization: `Bearer ${session.token}` },
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        ...actingUserHeader(opts.actingUserId),
+      },
       cache: 'no-store',
     });
   } catch (err) {
@@ -126,6 +141,7 @@ export async function apiMutate<T>(
   path: string,
   method: 'POST' | 'PUT' | 'DELETE',
   body?: unknown,
+  opts: { actingUserId?: number } = {},
 ): Promise<MutateResult<T>> {
   const session = await getSession();
   if (!session) {
@@ -139,6 +155,7 @@ export async function apiMutate<T>(
       headers: {
         Authorization: `Bearer ${session.token}`,
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...actingUserHeader(opts.actingUserId),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       cache: 'no-store',
@@ -165,12 +182,14 @@ export async function apiMutate<T>(
 }
 
 /**
- * Giriş yapan kullanıcının araçları.
- * React.cache ile sarmalı: aynı istek (request) içinde tekrar çağrılınca backend'e
- * yeniden gidilmez (layout + sayfalar aynı sonucu paylaşır).
+ * Araç listesi. `userId` verilirse o kullanıcının araçları gelir (admin);
+ * verilmezse oturum sahibinin — admin için bu tüm filo demektir.
+ *
+ * React.cache ile sarmalı: aynı istek (request) içinde aynı argümanla tekrar
+ * çağrılınca backend'e yeniden gidilmez (layout + sayfalar sonucu paylaşır).
  */
-export const getVehicles = cache(async (): Promise<Vehicle[]> => {
-  return (await apiFetch<Vehicle[]>('/vehicles')) ?? [];
+export const getVehicles = cache(async (userId?: number): Promise<Vehicle[]> => {
+  return (await apiFetch<Vehicle[]>('/vehicles', { actingUserId: userId })) ?? [];
 });
 
 /** Tek bir aracı id ile getirir (kullanıcının araç listesinden). Sahiplik de böylece doğrulanır. */
@@ -259,10 +278,16 @@ export async function getSensor(id: number): Promise<Sensor | null> {
   return apiFetch<Sensor>(`/sensors/${id}`, { allow404: true });
 }
 
-/** Sürücüler (GET /drivers). includeInactive=true ise pasifler de gelir. */
-export async function getDrivers(includeInactive = false): Promise<Driver[]> {
+/**
+ * Sürücüler (GET /drivers). includeInactive=true ise pasifler de gelir.
+ * `userId` verilirse yalnızca o kullanıcının şoförleri (admin çalışma alanı).
+ */
+export async function getDrivers(
+  includeInactive = false,
+  userId?: number,
+): Promise<Driver[]> {
   const suffix = includeInactive ? '?include_inactive=true' : '';
-  return (await apiFetch<Driver[]>(`/drivers${suffix}`)) ?? [];
+  return (await apiFetch<Driver[]>(`/drivers${suffix}`, { actingUserId: userId })) ?? [];
 }
 
 /** Tek bir sürücü (GET /drivers/:id). */
@@ -275,14 +300,24 @@ export async function getDriver(id: number): Promise<Driver | null> {
  * Filtreler: vehicleId, driverId, activeOnly (released_date IS NULL).
  */
 export async function getAssignments(
-  params: { vehicleId?: number; driverId?: number; activeOnly?: boolean } = {},
+  params: {
+    vehicleId?: number;
+    driverId?: number;
+    activeOnly?: boolean;
+    /** Yalnızca bu kullanıcının araçlarına ait tanımlar (admin çalışma alanı). */
+    userId?: number;
+  } = {},
 ): Promise<VehicleAssignment[]> {
   const qs = new URLSearchParams();
   if (params.vehicleId != null) qs.set('vehicle_id', String(params.vehicleId));
   if (params.driverId != null) qs.set('driver_id', String(params.driverId));
   if (params.activeOnly) qs.set('active_only', 'true');
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
-  return (await apiFetch<VehicleAssignment[]>(`/assignments${suffix}`)) ?? [];
+  return (
+    (await apiFetch<VehicleAssignment[]>(`/assignments${suffix}`, {
+      actingUserId: params.userId,
+    })) ?? []
+  );
 }
 
 /** Araca tanımlı durak lokasyonları (GET /vehicles/:id/stop-locations). */
@@ -301,9 +336,18 @@ export async function getUsers(search?: string): Promise<UserProfile[]> {
   return (await apiFetch<UserProfile[]>(`/users${qs}`)) ?? [];
 }
 
-/** Belirli bir kullanıcının araçları (GET /vehicles?user_id=). Admin-only. */
+/**
+ * Tek kullanıcı (GET /users/:id). Admin-only.
+ * `allow404`: kullanıcı silinmişse veya bu ucu tanımayan bir backend'e
+ * bağlanıldıysa sayfayı düşürmek yerine null döneriz.
+ */
+export async function getUserById(id: number): Promise<UserProfile | null> {
+  return apiFetch<UserProfile>(`/users/${id}`, { allow404: true });
+}
+
+/** Belirli bir kullanıcının araçları. Admin-only. */
 export async function getVehiclesForUser(userId: number): Promise<Vehicle[]> {
-  return (await apiFetch<Vehicle[]>(`/vehicles?user_id=${userId}`)) ?? [];
+  return getVehicles(userId);
 }
 
 /**

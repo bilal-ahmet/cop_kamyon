@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { apiMutate } from '@/lib/api';
 import type { Vehicle } from '@/lib/types';
-import { type ActionState, strOrNull, numOrNull } from './_shared';
+import { type ActionState, strOrNull, numOrNull, actingUserFrom } from './_shared';
 
 /** Form alanlarından araç gövdesi (body) oluşturur. */
 function vehicleBody(formData: FormData) {
@@ -18,18 +18,27 @@ function vehicleBody(formData: FormData) {
   };
 }
 
-/** Yeni araç oluşturur (POST /vehicles). */
+/**
+ * Araç listesi hem panelde hem admin'in müşteri çalışma alanında görünür.
+ */
+function revalidateVehicleList(actingUserId?: number) {
+  revalidatePath('/dashboard');
+  if (actingUserId) revalidatePath(`/dashboard/users/${actingUserId}`);
+}
+
+/** Yeni araç oluşturur (POST /vehicles). Admin çalışma alanındaysa araç o müşteriye ait olur. */
 export async function createVehicle(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const body = vehicleBody(formData);
   if (!body.plate) return { error: 'Plaka zorunludur.' };
 
-  const res = await apiMutate<Vehicle>('/vehicles', 'POST', body);
+  const res = await apiMutate<Vehicle>('/vehicles', 'POST', body, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard');
+  revalidateVehicleList(actingUserId);
   return { ok: true };
 }
 
@@ -38,6 +47,7 @@ export async function updateVehicle(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   const body = vehicleBody(formData);
   if (!body.plate) return { error: 'Plaka zorunludur.' };
@@ -45,23 +55,28 @@ export async function updateVehicle(
   const res = await apiMutate<Vehicle>(`/vehicles/${id}`, 'PUT', body);
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard');
+  revalidateVehicleList(actingUserId);
   revalidatePath(`/dashboard/${id}`);
   return { ok: true };
 }
 
-/** Aracı devre dışı bırakır (DELETE /vehicles/:id) ve dashboard'a döner. */
+/**
+ * Aracı devre dışı bırakır (DELETE /vehicles/:id) ve araç listesine döner.
+ * Admin bir müşterinin aracını sildiyse o müşterinin araç listesine döner —
+ * yoksa kullanıcı listesine düşerdi.
+ */
 export async function deleteVehicle(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
 
   const res = await apiMutate(`/vehicles/${id}`, 'DELETE');
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard');
-  redirect('/dashboard');
+  revalidateVehicleList(actingUserId);
+  redirect(actingUserId ? `/dashboard/users/${actingUserId}` : '/dashboard');
 }
 
 /** Form alanlarından durak (waypoint) gövdesi oluşturur. */

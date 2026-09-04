@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { apiMutate } from '@/lib/api';
 import type { Driver } from '@/lib/types';
-import { type ActionState, strOrNull } from './_shared';
+import { type ActionState, strOrNull, actingUserFrom } from './_shared';
 
 /** Form alanlarından sürücü gövdesi oluşturur. */
 function driverBody(formData: FormData) {
@@ -15,18 +15,19 @@ function driverBody(formData: FormData) {
   };
 }
 
-/** Yeni sürücü ekler (POST /drivers). */
+/** Yeni sürücü ekler (POST /drivers). Admin çalışma alanındaysa şoför o müşteriye ait olur. */
 export async function createDriver(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const body = driverBody(formData);
   if (!body.full_name) return { error: 'Ad soyad zorunludur.' };
 
-  const res = await apiMutate<Driver>('/drivers', 'POST', body);
+  const res = await apiMutate<Driver>('/drivers', 'POST', body, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/soforler');
+  revalidateDriver(actingUserId);
   return { ok: true };
 }
 
@@ -35,14 +36,15 @@ export async function updateDriver(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   const body = driverBody(formData);
   if (!body.full_name) return { error: 'Ad soyad zorunludur.' };
 
-  const res = await apiMutate<Driver>(`/drivers/${id}`, 'PUT', body);
+  const res = await apiMutate<Driver>(`/drivers/${id}`, 'PUT', body, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidatePath('/dashboard/soforler');
+  revalidateDriver(actingUserId);
   return { ok: true };
 }
 
@@ -51,13 +53,14 @@ export async function deactivateDriver(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   if (!id) return { error: 'Geçersiz şoför.' };
 
-  const res = await apiMutate(`/drivers/${id}/deactivate`, 'POST');
+  const res = await apiMutate(`/drivers/${id}/deactivate`, 'POST', undefined, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidateDriver();
+  revalidateDriver(actingUserId);
   return { ok: true };
 }
 
@@ -66,13 +69,14 @@ export async function activateDriver(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   if (!id) return { error: 'Geçersiz şoför.' };
 
-  const res = await apiMutate<Driver>(`/drivers/${id}`, 'PUT', { is_active: true });
+  const res = await apiMutate<Driver>(`/drivers/${id}`, 'PUT', { is_active: true }, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidateDriver();
+  revalidateDriver(actingUserId);
   return { ok: true };
 }
 
@@ -84,18 +88,26 @@ export async function deleteDriver(
   _prev: ActionState | undefined,
   formData: FormData,
 ): Promise<ActionState> {
+  const actingUserId = actingUserFrom(formData);
   const id = Number(formData.get('id'));
   if (!id) return { error: 'Geçersiz şoför.' };
 
-  const res = await apiMutate(`/drivers/${id}`, 'DELETE');
+  const res = await apiMutate(`/drivers/${id}`, 'DELETE', undefined, { actingUserId });
   if (!res.ok) return { error: res.error };
 
-  revalidateDriver();
+  revalidateDriver(actingUserId);
   return { ok: true };
 }
 
-/** Şoför listesi hem Şoförler sayfasında hem tanımlama formunda kullanılıyor. */
-function revalidateDriver() {
+/**
+ * Şoför listesi hem Şoförler sayfasında hem tanımlama formunda kullanılıyor.
+ * Admin bir müşteri adına çalışıyorsa o müşterinin çalışma alanı da tazelenir.
+ */
+function revalidateDriver(actingUserId?: number) {
   revalidatePath('/dashboard/soforler');
   revalidatePath('/dashboard/atamalar');
+  if (actingUserId) {
+    revalidatePath(`/dashboard/users/${actingUserId}/soforler`);
+    revalidatePath(`/dashboard/users/${actingUserId}/atamalar`);
+  }
 }

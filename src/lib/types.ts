@@ -153,12 +153,17 @@ export interface Sensor {
 /** Sürücü (GET /drivers). */
 export interface Driver {
   id: number;
+  /** Şoförün bağlı olduğu müşteri. */
+  user_id: number;
   full_name: string;
   license_no: string | null;
   phone: string | null;
   birth_date: string | null;
   is_active: boolean;
   created_at: string;
+  /** Admin listesinde JOIN ile gelir (hedef kullanıcı seçilmemişse hangi müşteriye ait). */
+  owner_username?: string;
+  owner_full_name?: string | null;
 }
 
 /**

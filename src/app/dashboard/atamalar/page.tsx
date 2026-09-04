@@ -1,14 +1,9 @@
 import Link from 'next/link';
 import { getAssignments, getVehicles, getDrivers } from '@/lib/api';
-import { formatDate } from '@/lib/format';
 import AssignmentFormModal from '@/components/assignments/AssignmentFormModal';
-import AssignmentEditModal from '@/components/assignments/AssignmentEditModal';
-import ConfirmButton from '@/components/ConfirmButton';
-import { endAssignment, reopenAssignment, deleteAssignment } from '@/actions/assignments';
-import { dangerBtn, secondaryBtn } from '@/components/formStyles';
+import AssignmentList from '@/components/assignments/AssignmentList';
 
 export default async function AssignmentsPage() {
-
   const [assignments, vehicles, drivers] = await Promise.all([
     getAssignments(),
     getVehicles(),
@@ -27,74 +22,7 @@ export default async function AssignmentsPage() {
         <AssignmentFormModal vehicles={vehicles} drivers={drivers} />
       </div>
 
-      {assignments.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">
-          Şoför-araç tanımı yok.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {assignments.map((a) => {
-            const active = a.released_date === null;
-            return (
-              <li
-                key={a.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-4"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-zinc-900">
-                      {a.driver_name ?? `Şoför #${a.driver_id}`}
-                    </span>
-                    <span className="text-zinc-400">→</span>
-                    <span className="font-mono text-zinc-700">
-                      {a.vehicle_plate ?? `Araç #${a.vehicle_id}`}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        active ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-500'
-                      }`}
-                    >
-                      {active ? 'Aktif' : 'Sonlandı'}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-zinc-600">
-                    {formatDate(a.assigned_date)}
-                    {a.released_date && ` → ${formatDate(a.released_date)}`}
-                    {a.notes && ` · ${a.notes}`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <AssignmentEditModal assignment={a} />
-                  {active ? (
-                    <ConfirmButton
-                      action={endAssignment}
-                      hidden={{ id: a.id }}
-                      label="Sonlandır"
-                      confirmText={`${a.driver_name ?? 'Şoför'} → ${a.vehicle_plate ?? 'araç'} tanımı sonlandırılacak. Emin misiniz?`}
-                      className={secondaryBtn}
-                    />
-                  ) : (
-                    <ConfirmButton
-                      action={reopenAssignment}
-                      hidden={{ id: a.id }}
-                      label="Tekrar aktif et"
-                      confirmText={`${a.driver_name ?? 'Şoför'} → ${a.vehicle_plate ?? 'araç'} tanımı tekrar aktif edilecek. Onaylıyor musunuz?`}
-                      className={secondaryBtn}
-                    />
-                  )}
-                  <ConfirmButton
-                    action={deleteAssignment}
-                    hidden={{ id: a.id }}
-                    label="Sil"
-                    confirmText={`${a.driver_name ?? 'Şoför'} — ${a.vehicle_plate ?? 'araç'} tanımı kalıcı olarak silinecek. Emin misiniz?`}
-                    className={dangerBtn}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <AssignmentList assignments={assignments} />
     </div>
   );
 }

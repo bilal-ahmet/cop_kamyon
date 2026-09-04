@@ -1,36 +1,22 @@
-import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { getVehiclesForUser } from '@/lib/api';
-import { getSession } from '@/lib/session';
 import VehicleCard from '@/components/VehicleCard';
+import VehicleFormModal from '@/components/vehicles/VehicleFormModal';
 
-export default async function UserVehiclesPage({
+/** Müşteri çalışma alanı → Araçlar. Yeni araç bu müşterinin adına açılır. */
+export default async function CustomerVehiclesPage({
   params,
 }: {
   params: Promise<{ userId: string }>;
 }) {
-  const [session, { userId }] = await Promise.all([getSession(), params]);
-
-  if (session?.user.role !== 'admin') redirect('/dashboard');
-
-  const uid = parseInt(userId);
-  const vehicles = await getVehiclesForUser(uid);
-
-  const ownerName =
-    vehicles[0]?.owner_full_name ?? vehicles[0]?.owner_username ?? `Kullanıcı #${uid}`;
+  const { userId } = await params;
+  const id = Number(userId);
+  const vehicles = await getVehiclesForUser(id);
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <Link
-          href="/dashboard"
-          className="text-sm text-zinc-500 hover:text-zinc-800"
-        >
-          ← Kullanıcılara dön
-        </Link>
-        <h1 className="mt-1 text-xl font-semibold text-zinc-900">
-          {ownerName} — Araçlar
-        </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-zinc-900">Araçlar</h2>
+        <VehicleFormModal actingUserId={id} />
       </div>
 
       {vehicles.length === 0 ? (
